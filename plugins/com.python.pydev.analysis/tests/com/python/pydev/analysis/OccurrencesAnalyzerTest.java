@@ -267,7 +267,7 @@ public class OccurrencesAnalyzerTest extends AnalysisTestsBase {
     private IMessage[] analyzeDoc2() {
         try {
             return analyzer.analyzeDocument(nature,
-                    (SourceModule) AbstractModule.createModuleFromDoc("foo", null, doc, nature, true), prefs, doc,
+                    AbstractModule.createModuleFromDoc("foo", null, doc, nature, true), prefs, doc,
                     new NullProgressMonitor(), new TestIndentPrefs(true, 4));
         } catch (MisconfigurationException e) {
             throw new RuntimeException(e);
@@ -1056,7 +1056,7 @@ public class OccurrencesAnalyzerTest extends AnalysisTestsBase {
     private IMessage[] analyzeDoc() {
         SourceModule mod;
         try {
-            mod = (SourceModule) AbstractModule.createModuleFromDoc(null, null, doc, nature, true);
+            mod = AbstractModule.createModuleFromDoc(null, null, doc, nature, true);
         } catch (MisconfigurationException e) {
             throw new RuntimeException(e);
         }
@@ -1769,7 +1769,7 @@ public class OccurrencesAnalyzerTest extends AnalysisTestsBase {
     }
 
     public void testUndefinedVariableBuiltin3() {
-        doc = new Document("print [].__str__" //[] is a builtin 
+        doc = new Document("print [].__str__" //[] is a builtin
         );
         analyzer = new OccurrencesAnalyzer();
         msgs = analyzeDoc();
@@ -2713,7 +2713,57 @@ public class OccurrencesAnalyzerTest extends AnalysisTestsBase {
                 (SourceModule) AbstractModule.createModule("extendable.grammar3.sub1", file, nature, true), prefs, doc,
                 new NullProgressMonitor(), new TestIndentPrefs(true, 4));
 
-        printMessages(msgs, 0); //No errors in Python 2.x 
+        printMessages(msgs, 0); //No errors in Python 2.x
     }
 
+    public void testImportSelf() throws IOException, MisconfigurationException {
+        analyzer = new OccurrencesAnalyzer();
+        File file = new File(TestDependent.TEST_PYSRC_LOC +
+                "importself/__init__.py");
+        Document doc = new Document(FileUtils.getFileContents(file));
+        msgs = analyzer.analyzeDocument(nature,
+                (SourceModule) AbstractModule.createModule("importself.__init__", file, nature, true), prefs, doc,
+                new NullProgressMonitor(), new TestIndentPrefs(true, 4));
+
+        printMessages(msgs, 0); //No errors in Python 2.x
+    }
+
+    public void testImportSelf2() throws IOException, MisconfigurationException {
+        analyzer = new OccurrencesAnalyzer();
+        File file = new File(TestDependent.TEST_PYSRC_LOC +
+                "importself/importself2.py");
+        Document doc = new Document(FileUtils.getFileContents(file));
+        msgs = analyzer.analyzeDocument(nature,
+                (SourceModule) AbstractModule.createModule("importself.importself2", file, nature, true), prefs, doc,
+                new NullProgressMonitor(), new TestIndentPrefs(true, 4));
+
+        printMessages(msgs, 1); //Unused import
+        assertContainsMsg("Unused import: importself.importself2", msgs);
+    }
+
+    public void testReportSingleErrorOnAttributeAccessWithCalls() {
+        doc = new Document(""
+                + "NotDefined.object.Check(\n"
+                + "    ).Foo(\n"
+                + "    ).Bar(\n"
+                + "    )\n"
+                + "");
+        analyzer = new OccurrencesAnalyzer();
+        msgs = analyzeDoc();
+
+        printMessages(msgs, 1);
+        assertEquals(1, msgs[0].getStartLine(doc));
+    }
+
+    public void testRelativeImport() throws IOException, MisconfigurationException {
+        analyzer = new OccurrencesAnalyzer();
+        File file = new File(TestDependent.TEST_PYSRC_LOC +
+                "mod/mod1/test_relative.py");
+        Document doc = new Document(FileUtils.getFileContents(file));
+        msgs = analyzer.analyzeDocument(nature,
+                (SourceModule) AbstractModule.createModule("mod.mod1.test_relative", file, nature, true), prefs, doc,
+                new NullProgressMonitor(), new TestIndentPrefs(true, 4));
+
+        printMessages(msgs, 0); //No errors in Python 2.x
+    }
 }

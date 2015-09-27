@@ -19,7 +19,9 @@ import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.ListenerList;
 import org.eclipse.debug.core.DebugException;
 import org.eclipse.debug.core.model.IValue;
+import org.eclipse.debug.core.model.IVariable;
 import org.eclipse.debug.core.model.IWatchExpression;
+import org.eclipse.debug.internal.ui.DefaultLabelProvider;
 import org.eclipse.debug.ui.IDebugModelPresentation;
 import org.eclipse.debug.ui.IValueDetailListener;
 import org.eclipse.jface.viewers.ILabelProviderListener;
@@ -28,13 +30,14 @@ import org.eclipse.ui.IEditorInput;
 import org.python.pydev.core.log.Log;
 import org.python.pydev.debug.core.PydevDebugPlugin;
 import org.python.pydev.editor.PyEdit;
-import org.python.pydev.editorinput.PydevFileEditorInput;
+import org.python.pydev.editorinput.EditorInputFactory;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_ui.ImageCache;
-
 
 /**
  * Provides decoration for model elements in the debugger interface.
  */
+@SuppressWarnings("restriction")
 public class PyDebugModelPresentation implements IDebugModelPresentation {
 
     static public String PY_DEBUG_MODEL_ID = "org.python.pydev.debug";
@@ -46,6 +49,26 @@ public class PyDebugModelPresentation implements IDebugModelPresentation {
 
     protected boolean displayVariableTypeNames = false; // variables display attribute
 
+    private boolean returnNullForDefaultHandling;
+
+    private DefaultLabelProvider defaultDebugLabelProvider;
+
+    public PyDebugModelPresentation() {
+        this(true);
+    }
+
+    public PyDebugModelPresentation(boolean returnNullForDefaultHandling) {
+        this.returnNullForDefaultHandling = returnNullForDefaultHandling;
+        if (!returnNullForDefaultHandling) {
+            try {
+                defaultDebugLabelProvider = new DefaultLabelProvider();
+            } catch (Throwable e) {
+                //As it's discouraged access, let's prevent from having an error if it disappears in the future.
+                Log.log(e);
+            }
+        }
+    }
+
     /**
      * @return the image for some debug element
      */
@@ -56,17 +79,28 @@ public class PyDebugModelPresentation implements IDebugModelPresentation {
             try {
                 PyBreakpoint pyBreakpoint = (PyBreakpoint) element;
 
-                if ((pyBreakpoint).isEnabled())
-                    if (pyBreakpoint.isConditionEnabled()) {
-                        return imageCache.get("icons/breakmarker_conditional.gif");
-                    } else {
-                        return imageCache.get("icons/breakmarker.gif");
-                    }
+                if (pyBreakpoint.isEnabled()) {
+                    if (pyBreakpoint.getType().equals(PyBreakpoint.PY_BREAK_TYPE_DJANGO)) {
+                        return imageCache.get("icons/breakmarker_django.png");
 
-                else if (pyBreakpoint.isConditionEnabled()) {
-                    return imageCache.get("icons/breakmarker_gray_conditional.gif");
+                    } else {
+                        if (pyBreakpoint.isConditionEnabled()) {
+                            return imageCache.get("icons/breakmarker_conditional.gif");
+                        } else {
+                            return imageCache.get("icons/breakmarker.gif");
+                        }
+                    }
                 } else {
-                    return imageCache.get("icons/breakmarker_gray.gif");
+                    if (pyBreakpoint.getType().equals(PyBreakpoint.PY_BREAK_TYPE_DJANGO)) {
+                        return imageCache.get("icons/breakmarker_django_gray.png");
+
+                    } else {
+                        if (pyBreakpoint.isConditionEnabled()) {
+                            return imageCache.get("icons/breakmarker_gray_conditional.gif");
+                        } else {
+                            return imageCache.get("icons/breakmarker_gray.gif");
+                        }
+                    }
                 }
 
             } catch (CoreException e) {
@@ -79,8 +113,22 @@ public class PyDebugModelPresentation implements IDebugModelPresentation {
         } else if (element instanceof PyVariable) {
             return imageCache.get("icons/greendot.gif");
 
+        } else if (element instanceof CaughtException) {
+            return imageCache.get("icons/python_exception_breakpoint.png");
+
         } else if (element instanceof PyDebugTarget || element instanceof PyThread || element instanceof PyStackFrame) {
-            return null;
+            if (element instanceof PyThread) {
+                if (((PyThread) element).isCustomFrame) {
+                    return imageCache.get("icons/tasklet.png");
+                }
+            }
+
+            if (returnNullForDefaultHandling) {
+                return null;
+            }
+            if (defaultDebugLabelProvider != null) {
+                return defaultDebugLabelProvider.getImage(element);
+            }
         }
 
         return null;
@@ -126,10 +174,47 @@ public class PyDebugModelPresentation implements IDebugModelPresentation {
             }
         } else if (element instanceof AbstractDebugTarget || element instanceof PyStackFrame
                 || element instanceof PyThread) {
+            if (returnNullForDefaultHandling) {
+                return null;
+            }
+            if (element instanceof AbstractDebugTarget) {
+                AbstractDebugTarget abstractDebugTarget = (AbstractDebugTarget) element;
+                try {
+                    return abstractDebugTarget.getName();
+                } catch (DebugException e) {
+                    Log.log(e);
+                }
+            }
+            if (element instanceof PyStackFrame) {
+                PyStackFrame pyStackFrame = (PyStackFrame) element;
+                try {
+                    return pyStackFrame.getName();
+                } catch (DebugException e) {
+                    Log.log(e);
+                }
+            }
+            if (element instanceof PyThread) {
+                PyThread pyThread = (PyThread) element;
+                try {
+                    return pyThread.getName();
+                } catch (DebugException e) {
+                    Log.log(e);
+                }
+            }
             return null; // defaults work
 
-        } else if (element instanceof PyVariableCollection || element instanceof PyVariable) {
-            return null; // defaults are fine
+        } else if (element instanceof CaughtException) {
+            CaughtException caughtException = (CaughtException) element;
+            String text = this.getText(caughtException.threadNstack.thread);
+            return StringUtils.join("",
+                    new String[] { caughtException.excType, ": ", caughtException.msg, " - ", text });
+
+        } else if (element instanceof IVariable) {
+            if (returnNullForDefaultHandling) {
+                return null;
+            }
+            IVariable iVariable = (IVariable) element;
+            return getVariableText(iVariable); // defaults are fine
 
         } else if (element instanceof IWatchExpression) {
             try {
@@ -155,6 +240,20 @@ public class PyDebugModelPresentation implements IDebugModelPresentation {
         }
     }
 
+    protected String getVariableText(IVariable variable) {
+        try {
+            return StringUtils.join(" = ", variable.getName(), variable.getValue().getValueString());
+        } catch (DebugException e) {
+            Log.log(e);
+        }
+        try {
+            return variable.getName();
+        } catch (DebugException e) {
+            Log.log(e);
+        }
+        return null;
+    }
+
     /**
      * We've got some work to do to replicate here, because we can't return null, and have LazyModel presentation do the
      * default
@@ -177,7 +276,7 @@ public class PyDebugModelPresentation implements IDebugModelPresentation {
         if (element instanceof PyBreakpoint) {
             String file = ((PyBreakpoint) element).getFile();
             if (file != null) {
-                return PydevFileEditorInput.create(new File(file), false);
+                return EditorInputFactory.create(new File(file), false);
 
                 //We should not open the editor here, just create the input... the debug framework opens it later on.
                 //IPath path = new Path(file);

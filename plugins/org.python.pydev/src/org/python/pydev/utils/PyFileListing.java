@@ -12,7 +12,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 
@@ -26,10 +25,13 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.python.pydev.core.log.Log;
 import org.python.pydev.editor.codecompletion.revisited.PythonPathHelper;
 import org.python.pydev.shared_core.string.FastStringBuffer;
+import org.python.pydev.shared_core.string.StringUtils;
+import org.python.pydev.shared_core.structure.LinkedListWarningOnSlowOperations;
+import org.python.pydev.ui.filetypes.FileTypesPreferencesPage;
 
 /**
  * Helper class for finding out about python files below some source folder.
- * 
+ *
  * @author Fabio
  */
 public class PyFileListing {
@@ -60,7 +62,7 @@ public class PyFileListing {
 
         @Override
         public String toString() {
-            return "PyFileInfo:" + file + " - " + relPath;
+            return StringUtils.join("", "PyFileInfo:", file, " - ", relPath);
         }
 
         /**
@@ -83,7 +85,7 @@ public class PyFileListing {
 
     /**
      * Returns the directories and python files in a list.
-     * 
+     *
      * @param addSubFolders indicates if sub-folders should be added
      * @param canonicalFolders used to know if we entered a loop in the listing (with symlinks)
      * @return An object with the results of making that listing.
@@ -100,10 +102,11 @@ public class PyFileListing {
             //only check files that actually exist
 
             if (file.isDirectory()) {
+                FastStringBuffer buf = new FastStringBuffer(currModuleRep, 128);
                 if (level != 0) {
-                    FastStringBuffer newModuleRep = new FastStringBuffer(currModuleRep, 128);
+                    FastStringBuffer newModuleRep = buf;
                     if (newModuleRep.length() != 0) {
-                        newModuleRep.append(".");
+                        newModuleRep.append('.');
                     }
                     newModuleRep.append(file.getName());
                     currModuleRep = newModuleRep.toString();
@@ -132,7 +135,7 @@ public class PyFileListing {
 
                 boolean hasInit = false;
 
-                List<File> foldersLater = new LinkedList<File>();
+                List<File> foldersLater = new LinkedListWarningOnSlowOperations<File>();
 
                 if (files != null) {
                     for (File file2 : files) {
@@ -145,7 +148,7 @@ public class PyFileListing {
                             result.addPyFileInfo(new PyFileInfo(file2, currModuleRep));
 
                             monitor.worked(1);
-                            monitor.setTaskName("Found:" + file2.toString());
+                            monitor.setTaskName(buf.clear().append("Found:").append(file2.toString()).toString());
 
                             if (checkHasInit && hasInit == false) {
                                 //only check if it has __init__ if really needed
@@ -177,14 +180,11 @@ public class PyFileListing {
                             }
                         }
                     }
-
                 }
 
-            } else if (file.isFile()) {
+            } else { // not dir: must be file
                 result.addPyFileInfo(new PyFileInfo(file, currModuleRep));
 
-            } else {
-                throw new RuntimeException("Not dir nor file... what is it?");
             }
         }
 
@@ -207,14 +207,17 @@ public class PyFileListing {
      * @return a file filter only for python files (and other dirs if specified)
      */
     public static FileFilter getPyFilesFileFilter(final boolean includeDirs) {
+
         return new FileFilter() {
+
+            private final String[] dottedValidSourceFiles = FileTypesPreferencesPage.getDottedValidSourceFiles();
 
             public boolean accept(File pathname) {
                 if (includeDirs) {
                     if (pathname.isDirectory()) {
                         return true;
                     }
-                    if (PythonPathHelper.isValidSourceFile(pathname.toString())) {
+                    if (PythonPathHelper.isValidSourceFile(pathname.toString(), dottedValidSourceFiles)) {
                         return true;
                     }
                     return false;
@@ -222,7 +225,7 @@ public class PyFileListing {
                     if (pathname.isDirectory()) {
                         return false;
                     }
-                    if (PythonPathHelper.isValidSourceFile(pathname.toString())) {
+                    if (PythonPathHelper.isValidSourceFile(pathname.toString(), dottedValidSourceFiles)) {
                         return true;
                     }
                     return false;
@@ -234,7 +237,7 @@ public class PyFileListing {
 
     /**
      * Returns the directories and python files in a list.
-     * 
+     *
      * @param file
      * @return tuple with files in pos 0 and folders in pos 1
      */

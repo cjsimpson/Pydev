@@ -35,12 +35,14 @@ import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.actions.WorkspaceModifyOperation;
 import org.eclipse.ui.wizards.newresource.BasicNewProjectResourceWizard;
 import org.eclipse.ui.wizards.newresource.BasicNewResourceWizard;
+import org.python.pydev.core.IPythonNature;
 import org.python.pydev.core.log.Log;
 import org.python.pydev.navigator.ui.PydevPackageExplorer;
 import org.python.pydev.navigator.ui.PydevPackageExplorer.PydevCommonViewer;
 import org.python.pydev.plugin.PyStructureConfigHelpers;
 import org.python.pydev.plugin.PydevPlugin;
 import org.python.pydev.shared_core.callbacks.ICallback;
+import org.python.pydev.ui.dialogs.PyDialogHelpers;
 import org.python.pydev.ui.wizards.gettingstarted.AbstractNewProjectWizard;
 
 /**
@@ -88,6 +90,13 @@ public class PythonProjectWizard extends AbstractNewProjectWizard implements IEx
         initializeDefaultPageImageDescriptor();
         projectPage = createProjectPage();
         sourcesPage = createSourcesPage();
+        PyDialogHelpers.enableAskInterpreterStep(false);
+    }
+
+    @Override
+    public void dispose() {
+        super.dispose();
+        PyDialogHelpers.enableAskInterpreterStep(true);
     }
 
     /**
@@ -165,14 +174,18 @@ public class PythonProjectWizard extends AbstractNewProjectWizard implements IEx
         }
 
         final String projectType = projectPage.getProjectType();
-        final String projectInterpreter = projectPage.getProjectInterpreter();
+        String projectInterpreter = projectPage.getProjectInterpreter();
+        if (projectInterpreter == null || projectInterpreter.trim().isEmpty()) {
+            projectInterpreter = IPythonNature.DEFAULT_INTERPRETER;
+        }
+        final String projectInterpreterFinal = projectInterpreter;
 
         // define the operation to create a new project
         WorkspaceModifyOperation op = new WorkspaceModifyOperation() {
             @Override
             protected void execute(IProgressMonitor monitor) throws CoreException {
 
-                createAndConfigProject(newProjectHandle, description, projectType, projectInterpreter, monitor,
+                createAndConfigProject(newProjectHandle, description, projectType, projectInterpreterFinal, monitor,
                         additionalArgsToConfigProject);
             }
         };

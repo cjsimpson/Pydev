@@ -37,7 +37,7 @@ public class IronpythonShell extends AbstractShell {
     }
 
     @Override
-    protected synchronized ProcessCreationInfo createServerProcess(IInterpreterInfo interpreter, int pWrite, int pRead)
+    protected synchronized ProcessCreationInfo createServerProcess(IInterpreterInfo interpreter, int port)
             throws IOException {
         File file = new File(interpreter.getExecutableOrJar());
         if (file.exists() == false) {
@@ -48,7 +48,8 @@ public class IronpythonShell extends AbstractShell {
         }
 
         String[] parameters = SimpleIronpythonRunner.preparePythonCallParameters(interpreter.getExecutableOrJar(),
-                FileUtils.getFileAbsolutePath(serverFile), new String[] { String.valueOf(pWrite), String.valueOf(pRead) },
+                FileUtils.getFileAbsolutePath(serverFile),
+                new String[] { String.valueOf(port) },
                 true);
 
         IInterpreterManager manager = PydevPlugin.getIronpythonInterpreterManager();
@@ -61,9 +62,9 @@ public class IronpythonShell extends AbstractShell {
         }
 
         File workingDir = serverFile.getParentFile();
-        process = SimpleIronpythonRunner.createProcess(parameters, envp, workingDir);
 
-        return new ProcessCreationInfo(parameters, envp, workingDir, process);
+        return new ProcessCreationInfo(parameters, envp, workingDir, SimpleIronpythonRunner.createProcess(parameters,
+                envp, workingDir));
     }
 
 }

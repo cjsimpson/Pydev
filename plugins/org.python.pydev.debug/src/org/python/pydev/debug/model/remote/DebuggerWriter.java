@@ -12,6 +12,8 @@ import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.python.pydev.core.log.Log;
+
 /**
  * Writer writes debugger commands to the network. Use postCommand to put new
  * ones in queue.
@@ -42,7 +44,7 @@ public class DebuggerWriter implements Runnable {
 
     public DebuggerWriter(Socket s) throws IOException {
         socket = s;
-        out = new OutputStreamWriter(s.getOutputStream());
+        out = new OutputStreamWriter(s.getOutputStream(), "utf-8");
     }
 
     /**
@@ -66,23 +68,34 @@ public class DebuggerWriter implements Runnable {
             AbstractDebuggerCommand cmd = null;
             synchronized (cmdQueue) {
                 if (cmdQueue.size() > 0) {
-                    cmd = (AbstractDebuggerCommand) cmdQueue.remove(0);
+                    cmd = cmdQueue.remove(0);
                 }
             }
             try {
                 if (cmd != null) {
+                    String outgoing;
+                    try {
+                        outgoing = cmd.getOutgoing();
+                        if (outgoing == null) {
+                            continue;
+                        }
+                    } catch (Throwable e) {
+                        Log.log(e);
+                        continue;
+                    }
+
                     cmd.aboutToSend();
-                    out.write(cmd.getOutgoing());
+                    out.write(outgoing);
                     out.write("\n");
                     out.flush();
                 }
                 synchronized (lock) {
                     Thread.sleep(100);
                 }
-            } catch (InterruptedException e) {
+            } catch (InterruptedException | IOException e) {
                 done = true;
-            } catch (IOException e1) {
-                done = true;
+            } catch (Throwable e1) {
+                Log.log(e1); //Unexpected error (but not done).
             }
             if ((socket == null) || !socket.isConnected()) {
                 done = true;

@@ -18,6 +18,7 @@ import org.eclipse.jface.text.IDocumentPartitionerExtension2;
 import org.python.pydev.core.IPythonPartitions;
 import org.python.pydev.shared_core.string.BaseParsingUtils;
 import org.python.pydev.shared_core.string.FastStringBuffer;
+import org.python.pydev.shared_core.string.StringUtils;
 
 /**
  * Helper class for parsing python code.
@@ -45,10 +46,12 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
             this.len = len;
         }
 
+        @Override
         public int len() {
             return len;
         }
 
+        @Override
         public char charAt(int i) {
             return cs[i];
         }
@@ -69,10 +72,12 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
             this.len = len;
         }
 
+        @Override
         public int len() {
             return len;
         }
 
+        @Override
         public char charAt(int i) {
             return cs.charAt(i);
         }
@@ -93,10 +98,12 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
             this.len = len;
         }
 
+        @Override
         public int len() {
             return len;
         }
 
+        @Override
         public char charAt(int i) {
             return cs.charAt(i);
         }
@@ -117,10 +124,12 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
             this.len = len;
         }
 
+        @Override
         public int len() {
             return len;
         }
 
+        @Override
         public char charAt(int i) {
             return cs.charAt(i);
         }
@@ -141,10 +150,12 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
             this.len = len;
         }
 
+        @Override
         public int len() {
             return len;
         }
 
+        @Override
         public char charAt(int i) {
             try {
                 return cs.getChar(i);
@@ -167,10 +178,12 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
             this.cs = cs;
         }
 
+        @Override
         public int len() {
             return cs.length();
         }
 
+        @Override
         public char charAt(int i) {
             return cs.charAt(i);
         }
@@ -189,10 +202,12 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
             this.cs = cs;
         }
 
+        @Override
         public int len() {
             return cs.length();
         }
 
+        @Override
         public char charAt(int i) {
             return cs.charAt(i);
         }
@@ -211,15 +226,17 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
             this.cs = cs;
         }
 
+        @Override
         public int len() {
             return cs.getLength();
         }
 
+        @Override
         public char charAt(int i) {
             try {
                 return cs.getChar(i);
             } catch (BadLocationException e) {
-                throw new RuntimeException(e);
+                return '\0'; // For documents this may really happen as their len may change under the hood...
             }
         }
     }
@@ -288,10 +305,10 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
     //API methods --------------------------------------------------------------------
 
     /**
-     * @param buf used to add the comments contents (out) -- if it's null, it'll simply advance to the position and 
+     * @param buf used to add the comments contents (out) -- if it's null, it'll simply advance to the position and
      * return it.
      * @param i the # position
-     * @return the end of the comments position (end of document or new line char) 
+     * @return the end of the comments position (end of document or new line char)
      * @note the new line char (\r or \n) will be added as a part of the comment.
      */
     public int eatComments(FastStringBuffer buf, int i) {
@@ -315,7 +332,83 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
     }
 
     /**
-     * @param buf used to add the spaces (out) -- if it's null, it'll simply advance to the position and 
+     * This is a special construct to try to get an import.
+     */
+    public int eatFromImportStatement(FastStringBuffer buf, int i) throws SyntaxErrorException {
+        int len = len();
+        char c = '\0';
+
+        if (i + 5 <= len) {
+            // 'from '
+            if (charAt(i) == 'f' && charAt(i + 1) == 'r' && charAt(i + 2) == 'o' && charAt(i + 3) == 'm'
+                    && ((c = charAt(i + 4)) == ' ' || c == '\t')) {
+                i += 5;
+                if (buf != null) {
+                    buf.append("from");
+                    buf.append(c);
+                }
+            } else {
+                return i; //Walk nothing
+            }
+        } else {
+            return i;
+        }
+
+        while (i < len && (c = charAt(i)) != '\n' && c != '\r') {
+            if (c == '#') {
+                // Just ignore any comment
+                i = eatComments(null, i);
+
+            } else if (c == '\\') {
+                char c2;
+                if (i + 1 < len && ((c2 = charAt(i + 1)) == '\n' || c2 == '\r')) {
+                    if (buf != null) {
+                        buf.append(c);
+                        buf.append(c2);
+                    }
+                    i++;
+                    if (c2 == '\r') {
+                        //get \r too
+                        if (i + 1 < len) {
+                            c2 = charAt(i + 1);
+                            if (c2 == '\n') {
+                                if (buf != null) {
+                                    buf.append(c2);
+                                }
+                                i++;
+                            }
+                        }
+                    }
+                }
+                i++;
+
+            } else if (c == '(') {
+
+                if (buf != null) {
+                    buf.append(c);
+                }
+                i = eatPar(i, buf);
+                if (buf != null) {
+                    if (i < len) {
+                        buf.append(charAt(i));
+                    }
+                }
+                i++;
+
+            } else {
+                if (buf != null) {
+                    buf.append(c);
+                }
+                i++;
+            }
+
+        }
+
+        return i;
+    }
+
+    /**
+     * @param buf used to add the spaces (out) -- if it's null, it'll simply advance to the position and
      * return it.
      * @param i the first ' ' position
      * @return the position of the last space found
@@ -358,7 +451,7 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
 
     /**
      * Equivalent to eatLiterals(buf, startPos, false) .
-     * 
+     *
      * @param buf
      * @param startPos
      * @return
@@ -372,7 +465,7 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
      * Returns the index of the last character of the current string literal
      * beginning at startPos, optionally copying the contents of the literal to
      * an output buffer.
-     * 
+     *
      * @param buf
      *            If non-null, the contents of the literal are appended to this
      *            object.
@@ -413,7 +506,7 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
      * @param i index we are analyzing it
      * @param curr current char
      * @return the end of the multiline literal
-     * @throws SyntaxErrorException 
+     * @throws SyntaxErrorException
      */
     public int getLiteralStart(int i, char curr) throws SyntaxErrorException {
         boolean multi = isMultiLiteralBackwards(i, curr);
@@ -431,7 +524,7 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
      * @param i index we are analyzing it
      * @param curr current char
      * @return the end of the multiline literal
-     * @throws SyntaxErrorException 
+     * @throws SyntaxErrorException
      */
     public int getLiteralEnd(int i, char curr) throws SyntaxErrorException {
         boolean multi = isMultiLiteral(i, curr);
@@ -449,7 +542,7 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
      * @param i the ' or " position
      * @param buf used to add the comments contents (out)
      * @return the end of the literal position (or end of document)
-     * @throws SyntaxErrorException 
+     * @throws SyntaxErrorException
      */
     public int eatPar(int i, FastStringBuffer buf) throws SyntaxErrorException {
         return eatPar(i, buf, '(');
@@ -458,9 +551,9 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
     /**
      * @param i the index where we should start getting chars
      * @param buf the buffer that should be filled with the contents gotten (if null, they're ignored)
-     * @return the index where the parsing stopped. It should always be the character just before the new line 
+     * @return the index where the parsing stopped. It should always be the character just before the new line
      * (or before the end of the document).
-     * @throws SyntaxErrorException 
+     * @throws SyntaxErrorException
      */
     public int getFullFlattenedLine(int i, FastStringBuffer buf) throws SyntaxErrorException {
         char c = this.charAt(i);
@@ -505,12 +598,14 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
 
     /**
      * @param buf if null, it'll simply advance without adding anything to the buffer.
-     * @throws SyntaxErrorException 
+     *
+     * IMPORTANT: Won't add all to the buffer, only the chars found at this level (i.e.: not contents inside another [] or ()).
+     * @throws SyntaxErrorException
      */
     public int eatPar(int i, FastStringBuffer buf, char par) throws SyntaxErrorException {
         char c = ' ';
 
-        char closingPar = org.python.pydev.shared_core.string.StringUtils.getPeer(par);
+        char closingPar = StringUtils.getPeer(par);
 
         int j = i + 1;
         int len = len();
@@ -541,7 +636,7 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
 
     /**
      * discover the position of the closing quote
-     * @throws SyntaxErrorException 
+     * @throws SyntaxErrorException
      */
     public int findNextSingle(int i, char curr) throws SyntaxErrorException {
         boolean ignoreNext = false;
@@ -571,7 +666,7 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
 
     /**
      * discover the position of the closing quote
-     * @throws SyntaxErrorException 
+     * @throws SyntaxErrorException
      */
     public int findPreviousSingle(int i, char curr) throws SyntaxErrorException {
         while (i >= 0) {
@@ -598,7 +693,7 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
 
     /**
      * check the end of the multiline quote
-     * @throws SyntaxErrorException 
+     * @throws SyntaxErrorException
      */
     public int findNextMulti(int i, char curr) throws SyntaxErrorException {
         int len = len();
@@ -625,7 +720,7 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
 
     /**
      * check the end of the multiline quote
-     * @throws SyntaxErrorException 
+     * @throws SyntaxErrorException
      */
     public int findPreviousMulti(int i, char curr) throws SyntaxErrorException {
         while (i - 2 >= 0) {
@@ -689,12 +784,12 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
     /**
      * Removes all the comments, whitespaces and literals from a FastStringBuffer (might be useful when
      * just finding matches for something).
-     * 
+     *
      * NOTE: the literals and the comments are changed for spaces (if we don't remove them too)
-     * 
+     *
      * @param buf the buffer from where things should be removed.
      * @param whitespacesToo: are you sure about the whitespaces?
-     * @throws SyntaxErrorException 
+     * @throws SyntaxErrorException
      */
     public static void removeCommentsWhitespacesAndLiterals(FastStringBuffer buf, boolean whitespacesToo,
             boolean throwSyntaxError) throws SyntaxErrorException {
@@ -782,7 +877,7 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
      * @param initial the document
      * @param currPos the offset we're interested in
      * @return the content type of the current position
-     * 
+     *
      * The version with the IDocument as a parameter should be preffered, as
      * this one can be much slower (still, it is an alternative in tests or
      * other places that do not have document access), but keep in mind
@@ -814,14 +909,14 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
             if (ch == '\'' || ch == '"') {
                 boolean multi = parsingUtils.isMultiLiteral(i, ch);
                 if (multi) {
-                    curr = PY_MULTILINE_STRING1;
+                    curr = PY_MULTILINE_BYTES1;
                     if (ch == '"') {
-                        curr = PY_MULTILINE_STRING2;
+                        curr = PY_MULTILINE_BYTES2;
                     }
                 } else {
-                    curr = PY_SINGLELINE_STRING1;
+                    curr = PY_SINGLELINE_BYTES1;
                     if (ch == '"') {
-                        curr = PY_SINGLELINE_STRING2;
+                        curr = PY_SINGLELINE_BYTES2;
                     }
                 }
                 try {
@@ -837,7 +932,7 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
                     return curr; //found inside
                 }
                 if (currPos == i) {
-                    if (PY_SINGLELINE_STRING1.equals(curr) || PY_SINGLELINE_STRING2.equals(curr)) {
+                    if (PY_SINGLELINE_BYTES1.equals(curr) || PY_SINGLELINE_BYTES2.equals(curr)) {
                         return curr;
                     }
                 }
@@ -854,7 +949,7 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
      * @param document the document we want to get info on
      * @param i the document offset we're interested in
      * @return the content type at that position (according to IPythonPartitions)
-     * 
+     *
      * Uses the default if the partitioner is not set in the document (for testing purposes)
      */
     public static String getContentType(IDocument document, int i) {
@@ -949,17 +1044,38 @@ public abstract class ParsingUtils extends BaseParsingUtils implements IPythonPa
         return line;
     }
 
+    public static boolean isStringContentType(String contentType) {
+        return IPythonPartitions.PY_MULTILINE_BYTES1.equals(contentType)
+                || IPythonPartitions.PY_MULTILINE_BYTES2.equals(contentType)
+                || IPythonPartitions.PY_SINGLELINE_BYTES1.equals(contentType)
+                || IPythonPartitions.PY_SINGLELINE_BYTES2.equals(contentType)
+
+                || IPythonPartitions.PY_MULTILINE_UNICODE1.equals(contentType)
+                || IPythonPartitions.PY_MULTILINE_UNICODE2.equals(contentType)
+                || IPythonPartitions.PY_SINGLELINE_UNICODE1.equals(contentType)
+                || IPythonPartitions.PY_SINGLELINE_UNICODE2.equals(contentType)
+
+                || IPythonPartitions.PY_MULTILINE_BYTES_OR_UNICODE1.equals(contentType)
+                || IPythonPartitions.PY_MULTILINE_BYTES_OR_UNICODE2.equals(contentType)
+                || IPythonPartitions.PY_SINGLELINE_BYTES_OR_UNICODE1.equals(contentType)
+                || IPythonPartitions.PY_SINGLELINE_BYTES_OR_UNICODE2.equals(contentType)
+
+        ;
+    }
+
+    public static boolean isCommentContentType(String contentType)
+    {
+        return IPythonPartitions.PY_COMMENT.equals(contentType);
+    }
+
     public static boolean isStringPartition(IDocument document, int offset) {
         String contentType = getContentType(document, offset);
-        return IPythonPartitions.PY_MULTILINE_STRING1.equals(contentType)
-                || IPythonPartitions.PY_MULTILINE_STRING2.equals(contentType)
-                || IPythonPartitions.PY_SINGLELINE_STRING1.equals(contentType)
-                || IPythonPartitions.PY_SINGLELINE_STRING2.equals(contentType);
+        return isStringContentType(contentType);
     }
 
     public static boolean isCommentPartition(IDocument document, int offset) {
         String contentType = getContentType(document, offset);
-        return IPythonPartitions.PY_COMMENT.equals(contentType);
+        return isCommentContentType(contentType);
     }
 
 }

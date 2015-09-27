@@ -10,10 +10,16 @@
 package com.python.pydev.analysis.additionalinfo;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
+import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.jface.text.Document;
+import org.python.pydev.core.IInterpreterManager;
 import org.python.pydev.core.MisconfigurationException;
 import org.python.pydev.core.ModulesKey;
 import org.python.pydev.editor.codecompletion.revisited.modules.AbstractModule;
@@ -21,7 +27,13 @@ import org.python.pydev.editor.codecompletion.revisited.modules.SourceModule;
 import org.python.pydev.parser.jython.ast.ClassDef;
 import org.python.pydev.parser.jython.ast.FunctionDef;
 import org.python.pydev.parser.jython.ast.NameTok;
+import org.python.pydev.shared_core.callbacks.ICallbackListener;
 import org.python.pydev.shared_core.io.FileUtils;
+import org.python.pydev.shared_core.structure.Tuple;
+import org.python.pydev.ui.interpreters.PythonInterpreterManager;
+import org.python.pydev.ui.pythonpathconf.InterpreterInfo;
+
+import com.python.pydev.analysis.system_info_builder.InterpreterInfoBuilder;
 
 public class AdditionalInterpreterInfoTest extends AdditionalInfoTestsBase {
 
@@ -41,6 +53,7 @@ public class AdditionalInterpreterInfoTest extends AdditionalInfoTestsBase {
         }
     }
 
+    @Override
     public void setUp() throws Exception {
         super.setUp();
         info = new AbstractAdditionalDependencyInfo() {
@@ -53,6 +66,16 @@ public class AdditionalInterpreterInfoTest extends AdditionalInfoTestsBase {
             @Override
             protected File getPersistingFolder() {
                 return null;
+            }
+
+            @Override
+            protected Set<String> getPythonPathFolders() {
+                return new HashSet<>(Arrays.asList(baseDir.getAbsolutePath()));
+            }
+
+            @Override
+            protected String getUIRepresentation() {
+                return "Stub for: " + baseDir;
             }
 
         };
@@ -162,7 +185,7 @@ public class AdditionalInterpreterInfoTest extends AdditionalInfoTestsBase {
         String doc = "class Test:\n" +
                 "    def m1(self):\n" +
                 "        pass";
-        SourceModule module = (SourceModule) AbstractModule.createModuleFromDoc("test", null, new Document(doc),
+        SourceModule module = AbstractModule.createModuleFromDoc("test", null, new Document(doc),
                 nature, true);
         info.addAstInfo(module.getAst(), module.getModulesKey(), false);
 
@@ -195,7 +218,7 @@ public class AdditionalInterpreterInfoTest extends AdditionalInfoTestsBase {
                 "        def mmm(self):\n" +
                 "            self.attr1 = 10";
 
-        SourceModule module = (SourceModule) AbstractModule.createModuleFromDoc("test", null, new Document(doc),
+        SourceModule module = AbstractModule.createModuleFromDoc("test", null, new Document(doc),
                 nature, true);
         info.addAstInfo(module.getAst(), module.getModulesKey(), false);
 
@@ -233,7 +256,7 @@ public class AdditionalInterpreterInfoTest extends AdditionalInfoTestsBase {
                 "    class Test2:\n" +
                 "        def mmm(self):\n" +
                 "            pass";
-        SourceModule module = (SourceModule) AbstractModule.createModuleFromDoc("test", null, new Document(doc),
+        SourceModule module = AbstractModule.createModuleFromDoc("test", null, new Document(doc),
                 nature, true);
         info.addAstInfo(module.getAst(), module.getModulesKey(), false);
 
@@ -256,29 +279,30 @@ public class AdditionalInterpreterInfoTest extends AdditionalInfoTestsBase {
 
     }
 
-    public void testCompleteIndex() throws MisconfigurationException, InterruptedException {
+    public void testCompleteIndex() throws Exception {
         String doc = "class Test:\n" +
                 "    class Test2:\n" +
                 "        def mmm(self):\n" +
                 "            a = mmm1\n"
                 +
                 "            print mmm1";
-        File tempFileAt = FileUtils.getTempFileAt(baseDir, "data_temporary_file_on_additional_interpreter_info_test", ".py");
+        File tempFileAt = FileUtils.getTempFileAt(baseDir, "data_temporary_file_on_additional_interpreter_info_test",
+                ".py");
         FileUtils.writeStrToFile(doc, tempFileAt);
         try {
-            SourceModule module = (SourceModule) AbstractModule.createModuleFromDoc("test", tempFileAt, new Document(
+            SourceModule module = AbstractModule.createModuleFromDoc("test", tempFileAt, new Document(
                     doc), nature, true);
             info.addAstInfo(module.getAst(), new ModulesKey("test", tempFileAt), false);
 
             List<ModulesKey> modulesWithTokensStartingWith = null;
 
-            modulesWithTokensStartingWith = info.getModulesWithToken("mmm", null);
+            modulesWithTokensStartingWith = info.getModulesWithToken(null, "mmm", null);
             assertEquals(1, modulesWithTokensStartingWith.size());
 
-            modulesWithTokensStartingWith = info.getModulesWithToken("mmm1", null);
+            modulesWithTokensStartingWith = info.getModulesWithToken(null, "mmm1", null);
             assertEquals(1, modulesWithTokensStartingWith.size());
 
-            modulesWithTokensStartingWith = info.getModulesWithToken("mmm4", null);
+            modulesWithTokensStartingWith = info.getModulesWithToken(null, "mmm4", null);
             assertEquals(0, modulesWithTokensStartingWith.size());
 
             synchronized (this) {
@@ -287,13 +311,96 @@ public class AdditionalInterpreterInfoTest extends AdditionalInfoTestsBase {
 
             doc = "new contents";
             FileUtils.writeStrToFile(doc, tempFileAt);
-            modulesWithTokensStartingWith = info.getModulesWithToken("mmm", null);
+
+            info.removeInfoFromModule("test", true);
+            info.addAstInfo(new ModulesKey("test", tempFileAt), true);
+            modulesWithTokensStartingWith = info.getModulesWithToken(null, "mmm", null);
             assertEquals(0, modulesWithTokensStartingWith.size());
 
-            modulesWithTokensStartingWith = info.getModulesWithToken("contents", null);
+            modulesWithTokensStartingWith = info.getModulesWithToken(null, "contents", null);
             assertEquals(1, modulesWithTokensStartingWith.size());
         } finally {
             tempFileAt.delete();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testForcedBuiltinsInAdditionalInfo() throws Exception {
+        IInterpreterManager interpreterManager = getInterpreterManager();
+        String defaultInterpreter = interpreterManager.getDefaultInterpreterInfo(false).getExecutableOrJar();
+
+        AbstractAdditionalDependencyInfo additionalSystemInfo = AdditionalSystemInterpreterInfo
+                .getAdditionalSystemInfo(interpreterManager, defaultInterpreter);
+
+        checkItertoolsToken(additionalSystemInfo, false);
+        InterpreterInfo defaultInterpreterInfo = (InterpreterInfo) interpreterManager.getDefaultInterpreterInfo(false);
+        HashSet<String> set = new HashSet<>(Arrays.asList(defaultInterpreterInfo.getBuiltins()));
+        assertTrue(set.contains("itertools"));
+
+        //Now, update the information to contain the builtin tokens!
+        new InterpreterInfoBuilder().syncInfoToPythonPath(new NullProgressMonitor(), defaultInterpreterInfo);
+
+        checkItertoolsToken(additionalSystemInfo, true);
+
+        //Remove and re-update to check if it's fixed.
+        additionalSystemInfo.removeInfoFromModule("itertools", false);
+        checkItertoolsToken(additionalSystemInfo, false);
+
+        new InterpreterInfoBuilder().syncInfoToPythonPath(new NullProgressMonitor(), defaultInterpreterInfo);
+        checkItertoolsToken(additionalSystemInfo, true);
+
+        int indexSize = additionalSystemInfo.completeIndex.keys().size();
+
+        AdditionalSystemInterpreterInfo newAdditionalInfo = new AdditionalSystemInterpreterInfo(interpreterManager,
+                defaultInterpreter);
+        AdditionalSystemInterpreterInfo.setAdditionalSystemInfo((PythonInterpreterManager) interpreterManager,
+                defaultInterpreter, newAdditionalInfo);
+
+        newAdditionalInfo.load();
+        assertEquals(indexSize, newAdditionalInfo.completeIndex.keys().size());
+
+        final List<ModulesKey> added = new ArrayList<>();
+        final List<ModulesKey> removed = new ArrayList<>();
+        ICallbackListener listener = new ICallbackListener() {
+
+            @Override
+            public Object call(Object obj) {
+                Tuple t = (Tuple) obj;
+                added.addAll((List<ModulesKey>) t.o1);
+                removed.addAll((List<ModulesKey>) t.o2);
+                return null;
+            }
+        };
+        AbstractAdditionalDependencyInfo.modulesAddedAndRemoved.registerListener(listener);
+        try {
+            new InterpreterInfoBuilder().syncInfoToPythonPath(new NullProgressMonitor(), defaultInterpreterInfo);
+        } finally {
+            AbstractAdditionalDependencyInfo.modulesAddedAndRemoved.unregisterListener(listener);
+        }
+
+        if (added.size() > 0) {
+            throw new AssertionError(
+                    "Expected no modules to be added as we just loaded from a clean save. Found: " + added);
+        }
+        if (removed.size() > 0) {
+            throw new AssertionError(
+                    "Expected no modules to be removed as we just loaded from a clean save. Found: " + removed);
+        }
+
+        checkItertoolsToken(newAdditionalInfo, true);
+
+    }
+
+    private void checkItertoolsToken(AbstractAdditionalDependencyInfo additionalSystemInfo, boolean expect) {
+        Collection<IInfo> tokensStartingWith;
+        tokensStartingWith = additionalSystemInfo.getTokensStartingWith("izip_longest",
+                AbstractAdditionalTokensInfo.TOP_LEVEL);
+        if (expect) {
+            assertEquals(1, tokensStartingWith.size());
+
+        } else {
+            assertEquals(0, tokensStartingWith.size());
+
         }
     }
 

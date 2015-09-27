@@ -1,11 +1,22 @@
-Note for users with Aptana Studio 3 (Beta)
+Note for users with LiClipse
 ==========================================
 
-PyDev already comes preinstalled in `Aptana Studio
-3 <http://aptana.com/products/studio3>`_, so, this step can be skipped
-(note that if `Aptana Studio 3 <http://aptana.com/products/studio3>`_ is
+PyDev already comes preinstalled in `LiClipse <http://www.liclipse.com/>`_, so, this step can be skipped
+(note that if `LiClipse <http://www.liclipse.com/>`_ is
 used, PyDev cannot be installed or update separately, as it must always be
 updated as a whole).
+
+
+Important requisite
+===========================
+
+PyDev now requires **java 7** in order to run. If you don't have java 7, the update process may appear to succeed, but PyDev
+will simply not show in the target installation. Please double-check if you're using a java 7 vm in about > installation
+details > configuration before trying to install PyDev.
+
+Eclipse 3.8 onwards is required for the latest versions of PyDev (if you need to use an earlier version of Eclipse, stick
+to PyDev 2.8.x).
+
 
 Before starting the install
 ===========================
@@ -54,18 +65,18 @@ Installing with the update site
 **Note: Instructions are targeted at Eclipse 3.5 onwards**
 
 To install PyDev and PyDev Extensions using the Eclipse Update Manager,
-you need to use the **Help > Install New Software...** menu (note that in older versions, 
+you need to use the **Help > Install New Software...** menu (note that in older versions,
 this would be the 'Find and Install'
 menu).
 
 |image0|
- 
+
 In the next screen, add the update site(s) you want to work with (
 **See below for a list with the available update sites**).
 
-.. figure:: http://pydev.org/images/update_sites.png
+.. figure:: images/update_sites.png
    :align: center
-   :alt: 
+   :alt:
 
 
 Available update sites
@@ -143,6 +154,26 @@ Checking the installation
 You can verify if it is correctly installed going to the menu **'window
 > preferences'** and checking if there is a **PyDev** item under that.
 
+PyDev does not appear after install!
+======================================
+
+Well, the main issue at this time is that PyDev requires Java 7 in order to run. So, if you don't want to support PyDev by
+going the LiClipse route (which is mostly a PyDev standalone plus some goodies), you may have to go through some loops to
+make sure that you're actually using Java 7 to run Eclipse/PyDev (as explained below).
+
+All OSes
+---------
+Make sure you download/install the latest Java 7 JRE or JDK, try restarting to see if it got it automatically.
+
+I.e.: in **help > about > installation details > configuration** check if it's actually using the java 7 version you pointed at.
+
+If it didn't get it automatically, follow the instructions from:
+
+http://wiki.eclipse.org/Eclipse.ini to add the -vm argument to eclipse.ini on "Specifying the JVM" to specify the java 7 vm.
+
+**Note on Mac OS**: You can use the command "/usr/libexec/java_home -v 1.7" to get the base path for the JVM (though you also need to append "/bin/java" to the output of said command to the -vm arg in eclipse.ini).
+
+
 Uninstalling
 ============
 
@@ -187,7 +218,7 @@ the update site... if that still fails, you could try to get the zip files, as i
 least give you a warning when it is corrupt.
 
 Note that the chance of the files being corrupt in the server is pretty
-low, as that's something that's always checked in a new release – but if you're 
+low, as that's something that's always checked in a new release – but if you're
 suspicious about it, please ask in the forum, so that it can be double-checked.
 
 Also, there have been reports with that error where the only solution
@@ -213,7 +244,7 @@ the editor's class name was mistyped in plugin.xml.
      ...
 
 
-.. |image0| image:: http://pydev.org/images/install_menu.png
-.. |image1| image:: http://pydev.org/images/update_sites2.png
-.. |image2| image:: http://pydev.org/images/update_sites3.png
-.. |image3| image:: http://pydev.org/images/update_sites4.png
+.. |image0| image:: images/install_menu.png
+.. |image1| image:: images/update_sites2.png
+.. |image2| image:: images/update_sites3.png
+.. |image3| image:: images/update_sites4.png

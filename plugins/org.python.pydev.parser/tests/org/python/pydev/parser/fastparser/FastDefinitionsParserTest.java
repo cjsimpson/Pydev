@@ -26,10 +26,12 @@ import org.python.pydev.shared_core.string.FastStringBuffer;
 
 public class FastDefinitionsParserTest extends TestCase {
 
+    @Override
     protected void setUp() throws Exception {
         super.setUp();
     }
 
+    @Override
     protected void tearDown() throws Exception {
         super.tearDown();
     }
@@ -58,25 +60,25 @@ public class FastDefinitionsParserTest extends TestCase {
             // Timer timer = new Timer();
             // parseGeneration = PARSE_GENERATION_ONLY_LOAD;
             // System.out.println("Only load");
-            // test.parseFilesInDir(new File("D:/bin/python265/Lib"), true);
+            // test.parseFilesInDir(new File("D:/bin/Python27/Lib"), true);
             // timer.printDiff();
             //
             // timer = new Timer();
             // parseGeneration = PARSE_GENERATION_DEFAULT;
             // System.out.println("Fast parse");
-            // test.parseFilesInDir(new File("D:/bin/python265/Lib"), true);
+            // test.parseFilesInDir(new File("D:/bin/Python27/Lib"), true);
             // timer.printDiff();
             //
             // timer = new Timer();
             // parseGeneration = PARSE_GENERATION_SYNTAX_PARSE;
             // System.out.println("Syntax parse");
-            // test.parseFilesInDir(new File("D:/bin/python265/Lib"), true);
+            // test.parseFilesInDir(new File("D:/bin/Python27/Lib"), true);
             // timer.printDiff();
             //
             // timer = new Timer();
             // parseGeneration = PARSE_GENERATION_FULL_PARSE;
             // System.out.println("Full parse");
-            // test.parseFilesInDir(new File("D:/bin/python265/Lib"), true);
+            // test.parseFilesInDir(new File("D:/bin/Python27/Lib"), true);
             // timer.printDiff();
 
             test.tearDown();
@@ -1424,6 +1426,22 @@ public class FastDefinitionsParserTest extends TestCase {
             buf.append("class Spam(object): pass\n");
         }
         Module m = (Module) FastDefinitionsParser.parse(buf.toString());
+    }
+
+    public void testDefinitionsParser16() {
+        Module m = (Module) FastDefinitionsParser.parse("class");
+    }
+
+    public void testDefinitionsParser17() {
+        Module m = (Module) FastDefinitionsParser.parse("class\n");
+    }
+
+    public void testDefinitionsParser18() {
+        Module m = (Module) FastDefinitionsParser.parse("def");
+    }
+
+    public void testDefinitionsParser19() {
+        Module m = (Module) FastDefinitionsParser.parse("def\n");
     }
 
     public void testEmpty() {

@@ -87,12 +87,28 @@
           SIGN_STOREPASS=<store password entered above>
           SIGN_KEYPASS=<key password entered above>
        3) Run the build
-     - Update all poms/manifests/feature with a new version number:
-          "mvn tycho-versions:set-version -DnewVersion=3.0.0-SNAPSHOT"
+       
+     - Update all poms/manifests/feature with a new version number
        When -SNAPSHOT is used, in the manifests it is replaced with
        .qualifier
+       1) Apply the test_with_tycho.patch
+            git apply test_with_tycho.patch
+            
+       2) Run the new version command
+            mvn -o tycho-versions:set-version -Dtycho.localArtifacts=ignore -DnewVersion=3.0.0-SNAPSHOT
+               (-o can be used if all the dependencies are already in .m2 directory,
+                if not you need to run without the -o on the first run)
+                Then, manually change version on com.python.pydev.runalltests on pom.xml and MANIFEST.MF as they're not updated there
+                
+       3) Reverse the test_with_tycho.patch
+            git apply -R test_with_tycho.patch
+               (if this fails it means you need to manually recreate the patch
+                because it is no longer valid)
+                
      - Sync pom and feature.xml version numbers to manifest ones.
-          "mvn tycho-versions:update-pom"
+          "mvn -o tycho-versions:update-pom -Dtycho.localArtifacts=ignore"
+          (See the notes about setting versions above, e.g. you need to do this
+           command with test_with_tycho.patch applied)
 
    [1] test_with_tycho.patch: We use a patch file to make the project testable with
    Tycho so that we can build and test it on Travis CI automatically. We don't want
@@ -108,16 +124,19 @@
 <project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <properties>
-    <tycho-version>0.18.1</tycho-version>
-    <tycho-extras-version>0.18.1</tycho-extras-version>
+    <tycho-version>0.23.0</tycho-version>
+    <tycho-extras-version>0.23.0</tycho-extras-version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <repository.id>eclipse-juno</repository.id>
-    <repository.url>http://download.eclipse.org/releases/juno</repository.url>
+    <repository.id>eclipse-mars</repository.id>
+    <repository.url>http://download.eclipse.org/releases/mars/</repository.url>
   </properties>
+  <prerequisites>
+    <maven>3.0</maven>
+  </prerequisites>
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.python.pydev</groupId>
   <artifactId>parent</artifactId>
-  <version>3.0.0-SNAPSHOT</version>
+  <version>4.3.1-SNAPSHOT</version>
   <name>Pydev Build Parent</name>
   <packaging>pom</packaging>
   <modules>
@@ -137,18 +156,6 @@
         <artifactId>tycho-surefire-plugin</artifactId>
         <version>${tycho-version}</version>
         <configuration>
-          <dependencies>
-            <dependency>
-              <type>eclipse-feature</type>
-              <artifactId>org.python.pydev.feature</artifactId>
-              <version>0.0.0</version>
-            </dependency>
-            <dependency>
-              <type>eclipse-feature</type>
-              <artifactId>org.eclipse.jdt</artifactId>
-              <version>0.0.0</version>
-            </dependency>
-          </dependencies>
           <explodedBundles>
             <!-- pysrc is in org.python.pydev, so explode it -->
             <explodedBundle>org.python.pydev</explodedBundle>
@@ -194,6 +201,20 @@
         <artifactId>target-platform-configuration</artifactId>
         <version>${tycho-version}</version>
         <configuration>
+          <target>
+	    <extraRequirements>
+	    <requirement>
+              <type>eclipse-feature</type>
+              <artifactId>org.python.pydev.feature</artifactId>
+              <version>0.0.0</version>
+            </requirement>
+            <requirement>
+              <type>eclipse-feature</type>
+              <artifactId>org.eclipse.jdt</artifactId>
+              <version>0.0.0</version>
+            </requirement>
+	    </extraRequirements>
+	  </target>
           <environments>
             <environment>
               <os>linux</os>
@@ -244,7 +265,7 @@
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-jarsigner-plugin</artifactId>
-            <version>1.2</version>
+            <version>1.4</version>
             <configuration>
               <keystore>${env.SIGN_KEYSTORE}</keystore>
               <storepass>${env.SIGN_STOREPASS}</storepass>

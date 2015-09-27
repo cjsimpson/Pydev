@@ -9,10 +9,14 @@ package org.python.pydev.shared_ui.utils;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IEditorPart;
+import org.eclipse.ui.IViewReference;
+import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.IWorkbenchPart;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PlatformUI;
+import org.eclipse.ui.part.ViewPart;
+import org.python.pydev.shared_core.log.Log;
 
 public class UIUtils {
 
@@ -32,7 +36,14 @@ public class UIUtils {
     }
 
     public static IWorkbenchWindow getActiveWorkbenchWindow() {
-        return PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+        if (!PlatformUI.isWorkbenchRunning()) {
+            return null;
+        }
+        IWorkbench workbench = PlatformUI.getWorkbench();
+        if (workbench == null) {
+            return null;
+        }
+        return workbench.getActiveWorkbenchWindow();
     }
 
     public static IEditorPart getActiveEditor() {
@@ -66,6 +77,31 @@ public class UIUtils {
             display = Display.getDefault();
         }
         return display;
+    }
+
+    public static ViewPart getView(String viewId, boolean forceVisible) {
+        IWorkbenchWindow workbenchWindow = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+        try {
+            if (workbenchWindow == null) {
+                return null;
+            }
+            IWorkbenchPage page = workbenchWindow.getActivePage();
+            if (forceVisible) {
+                return (ViewPart) page.showView(viewId, null, IWorkbenchPage.VIEW_VISIBLE);
+
+            } else {
+                IViewReference viewReference = page.findViewReference(viewId);
+                if (viewReference != null) {
+                    //if it's there, return it (but don't restore it if it's still not there).
+                    //when made visible, it'll handle things properly later on.
+                    return (ViewPart) viewReference.getView(false);
+                }
+            }
+        } catch (Exception e) {
+            Log.log(e);
+        }
+        return null;
+
     }
 
 }

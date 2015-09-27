@@ -13,15 +13,16 @@ package org.python.pydev.core;
 
 import java.io.File;
 import java.io.Serializable;
+import java.util.List;
 
-import org.python.pydev.core.docutils.StringUtils;
-import org.python.pydev.core.docutils.StringUtils.ICallbackOnSplit;
 import org.python.pydev.shared_core.string.FastStringBuffer;
+import org.python.pydev.shared_core.string.StringUtils;
+import org.python.pydev.shared_core.string.StringUtils.ICallbackOnSplit;
 
 /**
  * This class defines the key to use for some module. All its operations are based on its name.
  * The file may be null.
- * 
+ *
  * @author Fabio Zadrozny
  */
 public class ModulesKey implements Comparable<ModulesKey>, Serializable {
@@ -60,6 +61,7 @@ public class ModulesKey implements Comparable<ModulesKey>, Serializable {
     /**
      * @see java.lang.Object#equals(java.lang.Object)
      */
+    @Override
     public boolean equals(Object o) {
         if (!(o instanceof ModulesKey)) {
             return false;
@@ -77,6 +79,7 @@ public class ModulesKey implements Comparable<ModulesKey>, Serializable {
     /**
      * @see java.lang.Object#hashCode()
      */
+    @Override
     public int hashCode() {
         return this.name.hashCode();
     }
@@ -118,6 +121,30 @@ public class ModulesKey implements Comparable<ModulesKey>, Serializable {
         ICallbackOnSplit onSplit = new ProcessCheckIfStartingWithPart(startingWithLowerCase);
         //Return negated: if false was returned it means it returned early or found a part.
         return !StringUtils.split(this.name.toLowerCase(), '.', onSplit);
+    }
+
+    public static ModulesKey fromIO(String string) {
+        List<String> split = StringUtils.split(string, '|');
+        int size = split.size();
+        if (size == 2) {
+            String f = split.get(1);
+            return new ModulesKey(split.get(0), f.equals("null") ? null : new File(f));
+        }
+        if (size == 3) { //zipPath was empty
+            String f = split.get(1);
+            return new ModulesKeyForZip(split.get(0), f.equals("null") ? null : new File(f), "",
+                    split.get(2).equals("1") ? true : false);
+        }
+        if (size == 4) {
+            String f = split.get(1);
+            return new ModulesKeyForZip(split.get(0), f.equals("null") ? null : new File(f), split.get(2),
+                    split.get(3).equals("1") ? true : false);
+        }
+        throw new RuntimeException("Unable to restore key from: " + string);
+    }
+
+    public void toIO(FastStringBuffer buf) {
+        buf.append(this.name).append('|').append(this.file == null ? "null" : this.file.toString());
     }
 
 }

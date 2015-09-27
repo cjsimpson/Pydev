@@ -25,6 +25,7 @@ import org.eclipse.core.variables.VariablesPlugin;
 import org.python.pydev.core.IPythonNature;
 import org.python.pydev.core.IPythonPathNature;
 import org.python.pydev.core.log.Log;
+import org.python.pydev.shared_core.string.StringUtils;
 
 /**
  * Implements a part of IStringVariableManager (just the performStringSubstitution methods).
@@ -37,13 +38,15 @@ public class StringSubstitution {
         if (nature != null) {
             try {
                 IPythonPathNature pythonPathNature = nature.getPythonPathNature();
-                IProject project = nature.getProject();
+                IProject project = nature.getProject(); //note: project can be null when creating a new project and receiving a system nature.
                 variableSubstitution = pythonPathNature.getVariableSubstitution();
 
                 try {
                     IPathVariableManager projectPathVarManager = null;
                     try {
-                        projectPathVarManager = project.getPathVariableManager();
+                        if (project != null) {
+                            projectPathVarManager = project.getPathVariableManager();
+                        }
                     } catch (Throwable e1) {
                         //Ignore: getPathVariableManager not available on earlier Eclipse versions.
                     }
@@ -57,8 +60,8 @@ public class StringSubstitution {
                     //Other possible variables may be defined in General > Workspace > Linked Resources.
 
                     //We also add PROJECT_DIR_NAME (so, we can define a source folder with /${PROJECT_DIR_NAME}
-                    if (!variableSubstitution.containsKey("PROJECT_DIR_NAME")) {
-                        IPath location = project.getLocation();
+                    if (project != null && !variableSubstitution.containsKey("PROJECT_DIR_NAME")) {
+                        IPath location = project.getFullPath();
                         if (location != null) {
                             variableSubstitution.put("PROJECT_DIR_NAME", location.lastSegment());
                         }
@@ -97,13 +100,13 @@ public class StringSubstitution {
 
     /**
      * Replaces with all variables (the ones for this class and the ones in the VariablesPlugin)
-     * 
-     * 
+     *
+     *
      * Recursively resolves and replaces all variable references in the given
      * expression with their corresponding values. Allows the client to control
      * whether references to undefined variables are reported as an error (i.e.
-     * an exception is thrown).  
-     * 
+     * an exception is thrown).
+     *
      * @param expression expression referencing variables
      * @param reportUndefinedVariables whether a reference to an undefined variable
      *  is to be considered an error (i.e. throw an exception)
@@ -119,11 +122,12 @@ public class StringSubstitution {
 
     /**
      * String substitution for the pythonpath does not use the default eclipse string substitution (only variables
-     * defined explicitly in this class) 
+     * defined explicitly in this class)
      */
     public String performPythonpathStringSubstitution(String expression) throws CoreException {
-        if (variableSubstitution != null && variableSubstitution.size() > 0) {
-            //Only throw exception here if the 
+        if (variableSubstitution != null && variableSubstitution.size() > 0 && expression != null
+                && expression.length() > 0) {
+            //Only throw exception here if the
             expression = new StringSubstitutionEngine().performStringSubstitution(expression, true,
                     variableSubstitution);
         }
@@ -136,7 +140,7 @@ public class StringSubstitution {
      * expression with their corresponding values. Reports errors for references
      * to undefined variables (equivalent to calling
      * <code>performStringSubstitution(expression, true)</code>).
-     * 
+     *
      * @param expression expression referencing variables
      * @return expression with variable references replaced with variable values
      * @throws CoreException if unable to resolve the value of one or more variables
@@ -195,7 +199,7 @@ public class StringSubstitution {
 
         /**
          * Performs recursive string substitution and returns the resulting string.
-         * 
+         *
          * @param expression expression to resolve
          * @param reportUndefinedVariables whether to report undefined variables as an error
          * @param variableSubstitution registry of variables
@@ -230,7 +234,7 @@ public class StringSubstitution {
                         problemVariableList.setLength(problemVariableList.length() - 2); //truncate the last ", "
                         throw new CoreException(new Status(IStatus.ERROR, VariablesPlugin.getUniqueIdentifier(),
                                 VariablesPlugin.REFERENCE_CYCLE_ERROR,
-                                org.python.pydev.shared_core.string.StringUtils.format("Cycle error on:",
+                                StringUtils.format("Cycle error on:",
                                         problemVariableList.toString()), null));
                     }
                 }
@@ -243,7 +247,7 @@ public class StringSubstitution {
         /**
          * Makes a substitution pass of the given expression returns a Set of the variables that were resolved in this
          *  pass
-         *  
+         *
          * @param expression source expression
          * @param resolveVariables whether to resolve the value of any variables
          * @exception CoreException if unable to resolve a variable
@@ -342,8 +346,8 @@ public class StringSubstitution {
 
         /**
          * Resolve and return the value of the given variable reference,
-         * possibly <code>null</code>. 
-         * 
+         * possibly <code>null</code>.
+         *
          * @param var
          * @param resolveVariables whether to resolve the variables value or just to validate that this variable is valid
          * @param variableSubstitution variable registry

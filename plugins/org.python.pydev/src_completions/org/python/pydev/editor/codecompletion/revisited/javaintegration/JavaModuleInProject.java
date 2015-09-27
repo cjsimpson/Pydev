@@ -19,6 +19,7 @@ import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.ui.text.java.CompletionProposalCollector;
 import org.python.pydev.core.IToken;
 import org.python.pydev.plugin.PydevPlugin;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_core.structure.Tuple;
 
 /**
@@ -54,8 +55,13 @@ public class JavaModuleInProject extends AbstractJavaClassModule {
         this.tokens = createTokens(name);
         if (DEBUG_CLASS_MODULE_IN_PROJECT) {
             System.out.println("JavaClassModuleInProject tokens:");
-            for (IToken t : this.tokens) {
-                System.out.println(t.getRepresentation());
+            if (this.tokens == null) {
+                System.out.println("null tokens");
+
+            } else {
+                for (IToken t : this.tokens) {
+                    System.out.println(t.getRepresentation());
+                }
             }
         }
 
@@ -64,6 +70,7 @@ public class JavaModuleInProject extends AbstractJavaClassModule {
     /**
      * @return whether it's a package or a class.
      */
+    @Override
     public boolean isPackage() {
         if (this.moduleType == UNKNOWN) {
             throw new RuntimeException("Still can't determine whether it's a package or not.");
@@ -88,11 +95,11 @@ public class JavaModuleInProject extends AbstractJavaClassModule {
         if (filterCompletionName != null) {
             //pre-filter it a bit if we already know the completion name
             contents = "new %s().%s";
-            contents = org.python.pydev.shared_core.string.StringUtils.format(contents, completeClassDesc, completeClassDesc, filterCompletionName);
+            contents = StringUtils.format(contents, completeClassDesc, completeClassDesc, filterCompletionName);
 
         } else {
             contents = "new %s().";
-            contents = org.python.pydev.shared_core.string.StringUtils.format(contents, completeClassDesc, completeClassDesc);
+            contents = StringUtils.format(contents, completeClassDesc, completeClassDesc);
         }
 
         List<Tuple<IJavaElement, CompletionProposal>> javaCompletionProposals = getJavaCompletionProposals(contents,
@@ -102,11 +109,11 @@ public class JavaModuleInProject extends AbstractJavaClassModule {
             if (filterCompletionName != null) {
                 //pre-filter it a bit if we already know the completion name
                 contents = "%s.%s";
-                contents = org.python.pydev.shared_core.string.StringUtils.format(contents, completeClassDesc, completeClassDesc, filterCompletionName);
+                contents = StringUtils.format(contents, completeClassDesc, completeClassDesc, filterCompletionName);
 
             } else {
                 contents = "%s.";
-                contents = org.python.pydev.shared_core.string.StringUtils.format(contents, completeClassDesc, completeClassDesc);
+                contents = StringUtils.format(contents, completeClassDesc, completeClassDesc);
             }
             javaCompletionProposals = getJavaCompletionProposals(contents, contents.length() - 2, filterCompletionName);
 
@@ -164,7 +171,7 @@ public class JavaModuleInProject extends AbstractJavaClassModule {
             return;
         }
         CompletionProposalCollector collector = createCollector(filterCompletionName, ret, unit);
-        type.codeComplete(org.python.pydev.shared_core.string.StringUtils.format(contents, name).toCharArray(), -1, 0, new char[0][0], new char[0][0],
+        type.codeComplete(StringUtils.format(contents, name).toCharArray(), -1, 0, new char[0][0], new char[0][0],
                 new int[0], false, collector);
     }
 

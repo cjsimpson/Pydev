@@ -11,6 +11,7 @@
 
 package org.python.pydev.editor.autoedit;
 
+import org.eclipse.core.runtime.IAdaptable;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.Document;
 import org.eclipse.jface.text.DocumentCommand;
@@ -23,14 +24,15 @@ import org.python.pydev.core.docutils.ImportsSelection;
 import org.python.pydev.core.docutils.ParsingUtils;
 import org.python.pydev.core.docutils.PySelection;
 import org.python.pydev.core.docutils.PySelection.LineStartingScope;
+import org.python.pydev.core.docutils.PyStringUtils;
 import org.python.pydev.core.docutils.PythonPairMatcher;
-import org.python.pydev.core.docutils.StringUtils;
 import org.python.pydev.core.docutils.SyntaxErrorException;
 import org.python.pydev.core.log.Log;
 import org.python.pydev.shared_core.SharedCorePlugin;
 import org.python.pydev.shared_core.auto_edit.AutoEditStrategyNewLineHelper;
 import org.python.pydev.shared_core.string.FastStringBuffer;
 import org.python.pydev.shared_core.string.NoPeerAvailableException;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_core.string.TextSelectionUtils;
 import org.python.pydev.shared_core.structure.Tuple;
 import org.python.pydev.shared_core.utils.DocCmd;
@@ -38,9 +40,9 @@ import org.python.pydev.shared_interactive_console.console.ui.internal.IHandleSc
 
 /**
  * Class which implements the following behaviors:
- * - indenting: after 'class' or 'def' 
+ * - indenting: after 'class' or 'def'
  * - replacement: when typing colons or parentheses
- * 
+ *
  * This class uses the org.python.pydev.core.docutils.DocUtils class extensively
  * for some document-related operations.
  */
@@ -50,7 +52,10 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
 
     private boolean blockSelection;
 
-    public PyAutoIndentStrategy() {
+    private final IAdaptable projectAdaptable;
+
+    public PyAutoIndentStrategy(IAdaptable projectAdaptable) {
+        this.projectAdaptable = projectAdaptable;
     }
 
     public void setIndentPrefs(IIndentPrefs prefs) {
@@ -62,7 +67,7 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
             if (SharedCorePlugin.inTestMode()) {
                 this.prefs = new TestIndentPrefs(true, 4);
             } else {
-                this.prefs = new DefaultIndentPrefs(); //create a new one (because each pyedit may force the tabs differently).
+                this.prefs = new DefaultIndentPrefs(projectAdaptable); //create a new one (because each pyedit may force the tabs differently).
             }
         }
         return this.prefs;
@@ -70,7 +75,7 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
 
     /**
      * Set indentation automatically after newline.
-     * 
+     *
      * @return tuple with the indentation to be set and a boolean determining if it was found
      * to be within a parenthesis or not.
      */
@@ -99,9 +104,9 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
 
                 //we have to check if smartIndent is -1 because otherwise we are inside some bracket
                 if (smartIndent == -1 && !isInsidePar
-                        && org.python.pydev.shared_core.string.StringUtils.isClosingPeer(lastChar)) {
+                        && StringUtils.isClosingPeer(lastChar)) {
                     //ok, not inside brackets
-                    PythonPairMatcher matcher = new PythonPairMatcher(StringUtils.BRACKETS);
+                    PythonPairMatcher matcher = new PythonPairMatcher(PyStringUtils.BRACKETS);
                     int bracketOffset = selection.getLineOffset() + curr;
                     IRegion region = matcher.match(document, bracketOffset + 1);
                     if (region != null) {
@@ -127,7 +132,7 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
             String trimmedLine = lineWithoutComments.trim();
 
             if (smartIndent >= 0
-                    && (StringUtils.hasOpeningBracket(trimmedLine) || StringUtils.hasClosingBracket(trimmedLine))) {
+                    && (PyStringUtils.hasOpeningBracket(trimmedLine) || PyStringUtils.hasClosingBracket(trimmedLine))) {
                 return new Tuple<String, Boolean>(makeSmartIndent(text, smartIndent), isInsidePar);
             }
             //let's check for dedents...
@@ -196,9 +201,10 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
     }
 
     /**
-     * @return the text for the indent 
+     * @return the text for the indent
      */
-    private String indentBasedOnStartingScope(String text, PySelection selection, boolean checkForLowestBeforeNewScope) {
+    private String indentBasedOnStartingScope(String text, PySelection selection,
+            boolean checkForLowestBeforeNewScope) {
         LineStartingScope previousIfLine = selection.getPreviousLineThatStartsScope();
         if (previousIfLine != null) {
             String initial = getCharsBeforeNewLine(text);
@@ -269,8 +275,8 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
      * @param text the string that should added to the start of the returned string
      * @param considerEmptyLines whether we should consider empty lines in this function
      * @param c the command to deal with
-     * 
-     * @return a string with text+ the indentation found in the previous line (or previous non-empty line). 
+     *
+     * @return a string with text+ the indentation found in the previous line (or previous non-empty line).
      */
     private String autoIndentSameAsPrevious(IDocument d, int offset, String text, boolean considerEmptyLines) {
 
@@ -337,7 +343,7 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
      * @see org.eclipse.jface.text.IAutoEditStrategy#customizeDocumentCommand(IDocument, DocumentCommand)
      */
     public void customizeDocumentCommand(IDocument document, DocumentCommand command) {
-        if (blockSelection) {
+        if (blockSelection || !command.doit) {
             //in block selection, leave all as is and just change tabs/spaces.
             getIndentPrefs().convertToStd(document, command);
             return;
@@ -358,20 +364,28 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
                 return;
         }
 
+        final boolean tabStopInComments = getIndentPrefs().getTabStopInComment();
+
         // super idents newlines the same amount as the previous line
         final boolean isNewLine = AutoEditStrategyNewLineHelper.isNewLineText(document, command.length, command.text);
 
         if (!contentType.equals(ParsingUtils.PY_DEFAULT)) {
             //the indentation is only valid for things in the code (comments should not be indented).
             //(that is, if it is not a new line... in this case, it may have to be indented)
-            if (!isNewLine) {
-                //we have to take care about tabs anyway
-                getIndentPrefs().convertToStd(document, command);
-                return;
-            } else {
-                if (!contentType.equals(ParsingUtils.PY_COMMENT)) {
+            if (isNewLine) {
+                if (ParsingUtils.isStringContentType(contentType)) {
                     //within string, just regular indent...
                     autoIndentSameAsPrevious(document, command);
+                    return;
+                }
+            } else {
+                //not newline
+                if (ParsingUtils.isCommentContentType(contentType) && c == '\t' && tabStopInComments) {
+                    //within a comment...
+                    /* do nothing, but don't return */
+                } else {
+                    //we have to take care about tabs anyway
+                    getIndentPrefs().convertToStd(document, command);
                     return;
                 }
             }
@@ -403,7 +417,7 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
                 case '{':
                     if (prefs.getAutoParentesis()) {
                         PySelection ps = new PySelection(document, command.offset);
-                        char peer = org.python.pydev.shared_core.string.StringUtils.getPeer(c);
+                        char peer = StringUtils.getPeer(c);
                         if (shouldClose(ps, c, peer)) {
                             command.shiftsCaret = false;
                             command.text = c + "" + peer;
@@ -423,7 +437,7 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
                      * e.g.,
                      * def something(self):
                      *                    ^ cursor before the end colon
-                     * 
+                     *
                      * Typing another colon (i.e, ':') at that position will not insert
                      * another colon
                      */
@@ -440,7 +454,7 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
                 case ' ':
                     /*
                      * this is a space... so, if we are in 'from xxx ', we may auto-write
-                     * the import 
+                     * the import
                      */
                     if (prefs.getAutoWriteImport()) {
                         PySelection ps = new PySelection(document, command.offset);
@@ -451,11 +465,18 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
                         if (completeLine.indexOf(" import ") == -1
                                 && StringUtils.leftTrim(completeLine).startsWith("from ")
                                 && !completeLine.startsWith("import ") && !completeLine.endsWith(" import")
-                                && !lineToCursor.endsWith(" import") && !lineContentsFromCursor.startsWith("import")) {
+                                && !lineToCursor.endsWith(" import") && !lineContentsFromCursor.startsWith("import")
+                                && !completeLine.startsWith("cimport ") && !completeLine.endsWith(" cimport")
+                                && !lineToCursor.endsWith(" cimport")
+                                && !lineContentsFromCursor.startsWith("cimport")) {
 
-                            String importsTipperStr = ImportsSelection.getImportsTipperStr(lineToCursor, false).importsTipperStr;
+                            String importsTipperStr = ImportsSelection.getImportsTipperStr(lineToCursor,
+                                    false).importsTipperStr;
                             if (importsTipperStr.length() > 0) {
-                                command.text = " import ";
+                                if (!isCython) {
+                                    // On cython it could be a cimport, so, skip it.
+                                    command.text = " import ";
+                                }
                             }
                         }
                     }
@@ -483,8 +504,8 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
                             // sees if the command has one of them
 
                             boolean found = false;
-                            for (int i = 1; i <= StringUtils.BRACKETS.length && !found; i += 2) {
-                                char b = StringUtils.BRACKETS[i];
+                            for (int i = 1; i <= PyStringUtils.BRACKETS.length && !found; i += 2) {
+                                char b = PyStringUtils.BRACKETS[i];
                                 if (b == c) {
                                     found = true;
                                     performPairReplacement(document, command);
@@ -525,7 +546,8 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
     /**
      * Called right after a ' or "
      */
-    private void handleLiteral(IDocument document, DocumentCommand command, boolean isDefaultContext, char literalChar) {
+    private void handleLiteral(IDocument document, DocumentCommand command, boolean isDefaultContext,
+            char literalChar) {
         if (!prefs.getAutoLiterals()) {
             return;
         }
@@ -554,10 +576,10 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
         String cursorLineContents = ps.getCursorLineContents();
         if (cursorLineContents.indexOf(literalChar) == -1) {
             if (!isDefaultContext) {
-                //only add additional chars if on default context. 
+                //only add additional chars if on default context.
                 return;
             }
-            command.text = org.python.pydev.shared_core.string.StringUtils.getWithClosedPeer(literalChar);
+            command.text = StringUtils.getWithClosedPeer(literalChar);
             command.shiftsCaret = false;
             command.caretOffset = command.offset + 1;
             return;
@@ -577,10 +599,10 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
             //if it's not balanced, this char would be the closing char.
             if (balanced) {
                 if (!isDefaultContext) {
-                    //only add additional chars if on default context. 
+                    //only add additional chars if on default context.
                     return;
                 }
-                command.text = org.python.pydev.shared_core.string.StringUtils.getWithClosedPeer(literalChar);
+                command.text = StringUtils.getWithClosedPeer(literalChar);
                 command.shiftsCaret = false;
                 command.caretOffset = command.offset + 1;
             }
@@ -854,7 +876,7 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
      */
     public static Tuple<String, Integer> autoDedentAfterColon(IDocument document, DocumentCommand command, String tok,
             String[] tokens, IIndentPrefs prefs) throws BadLocationException {
-        if (prefs.getAutoDedentElse()) {
+        if (prefs.getAutoDedentElse() && command.doit) {
             PySelection ps = new PySelection(document, command.offset);
             String lineContents = ps.getCursorLineContents();
             if (lineContents.trim().equals(tok)) {
@@ -883,10 +905,12 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
         if ((ret = autoDedentAfterColon(document, command, "else", PySelection.TOKENS_BEFORE_ELSE, prefs)) != null) {
             return ret;
         }
-        if ((ret = autoDedentAfterColon(document, command, "except", PySelection.TOKENS_BEFORE_EXCEPT, prefs)) != null) {
+        if ((ret = autoDedentAfterColon(document, command, "except", PySelection.TOKENS_BEFORE_EXCEPT,
+                prefs)) != null) {
             return ret;
         }
-        if ((ret = autoDedentAfterColon(document, command, "finally", PySelection.TOKENS_BEFORE_FINALLY, prefs)) != null) {
+        if ((ret = autoDedentAfterColon(document, command, "finally", PySelection.TOKENS_BEFORE_FINALLY,
+                prefs)) != null) {
             return ret;
         }
         return null;
@@ -904,11 +928,11 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
 
     /**
      * Create the indentation string after comma and a newline.
-     * 
+     *
      * @param document
      * @param text
      * @param offset
-     * @param selection 
+     * @param selection
      * @return Indentation String
      * @throws BadLocationException
      */
@@ -965,13 +989,13 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
 
     /**
      * Private function which is called when a colon is the command.
-     * 
+     *
      * The following code will auto-replace colons in function declaractions
      * e.g., def something(self): ^ cursor before the end colon
-     * 
+     *
      * Typing another colon (i.e, ':') at that position will not insert another
      * colon
-     * 
+     *
      * @param document
      * @param command
      * @throws BadLocationException
@@ -992,7 +1016,7 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
                 }
 
             } catch (BadLocationException e) {
-                // should never happen because I just checked the length 
+                // should never happen because I just checked the length
                 throw new RuntimeException(e);
             }
 
@@ -1001,17 +1025,17 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
 
     /**
      * Private function to call to perform any replacement of braces.
-     * 
+     *
      * The Eclipse Java editor does this by default, and it is very useful. If
      * you try to insert some kind of pair, be it a parenthesis or bracket in
      * Java, the character will not insert and instead the editor just puts your
      * cursor at the next position.
-     * 
+     *
      * This function performs the equivalent for the Python editor.
-     *  
+     *
      * @param document
      * @param command if the command does not contain a brace, this function does nothing.
-     * @throws BadLocationException 
+     * @throws BadLocationException
      */
     private void performPairReplacement(IDocument document, DocumentCommand command) throws BadLocationException {
         boolean skipChar = canSkipCloseParenthesis(document, command);
@@ -1031,13 +1055,13 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
         char c = ps.getCharAtCurrentOffset();
 
         try {
-            char peer = org.python.pydev.shared_core.string.StringUtils.getPeer(c);
+            char peer = StringUtils.getPeer(c);
 
             FastStringBuffer doc = new FastStringBuffer(document.get(), 2);
             //it is not enough just counting the chars, we have to ignore those that are within comments or literals.
             ParsingUtils.removeCommentsWhitespacesAndLiterals(doc, false);
-            int chars = org.python.pydev.shared_core.string.StringUtils.countChars(c, doc);
-            int peers = org.python.pydev.shared_core.string.StringUtils.countChars(peer, doc);
+            int chars = StringUtils.countChars(c, doc);
+            int peers = StringUtils.countChars(peer, doc);
 
             boolean skipChar = chars == peers;
             return skipChar;
@@ -1052,7 +1076,7 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
      * @return true if we should close the opening pair (parameter c) and false if we shouldn't
      */
     public static boolean shouldClose(PySelection ps, char c, char peer) throws BadLocationException {
-        PythonPairMatcher matcher = new PythonPairMatcher(StringUtils.BRACKETS);
+        PythonPairMatcher matcher = new PythonPairMatcher(PyStringUtils.BRACKETS);
         String lineContentsFromCursor = ps.getLineContentsFromCursor();
 
         for (int i = 0; i < lineContentsFromCursor.length(); i++) {
@@ -1062,7 +1086,7 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
                 if (charAt == ',') {
                     break;
                 }
-                if (org.python.pydev.shared_core.string.StringUtils.isClosingPeer(charAt)) {
+                if (StringUtils.isClosingPeer(charAt)) {
                     break;
                 }
 
@@ -1112,24 +1136,24 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
      * Return smart indent amount for new line. This should be done for
      * multiline structures like function parameters, tuples, lists and
      * dictionaries.
-     * 
+     *
      * Example:
-     * 
+     *
      * a=foo(1, #
-     * 
+     *
      * We would return the indentation needed to place the caret at the #
      * position.
-     * 
+     *
      * @param document The document
      * @param offset The document offset of the last character on the previous line
-     * @param ps 
+     * @param ps
      * @return indent, or -1 if smart indent could not be determined (fall back to default)
      * and a boolean indicating if we're inside a parenthesis
      */
     public static Tuple<Integer, Boolean> determineSmartIndent(int offset, IDocument document, IIndentPrefs prefs)
             throws BadLocationException {
 
-        PythonPairMatcher matcher = new PythonPairMatcher(StringUtils.BRACKETS);
+        PythonPairMatcher matcher = new PythonPairMatcher(PyStringUtils.BRACKETS);
         int openingPeerOffset = matcher.searchForAnyOpeningPeer(offset, document);
         if (openingPeerOffset == -1) {
             return new Tuple<Integer, Boolean>(-1, false);
@@ -1147,11 +1171,11 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
             //as the previous line, as this means that the user 'customized' the indent level at this place.
             PySelection ps = new PySelection(document, offset);
             String lineContentsToCursor = ps.getLineContentsToCursor();
-            if (!openingPeerIsInCurrentLine && !StringUtils.hasUnbalancedClosingPeers(lineContentsToCursor)) {
+            if (!openingPeerIsInCurrentLine && !PyStringUtils.hasUnbalancedClosingPeers(lineContentsToCursor)) {
                 try {
                     char openingChar = document.getChar(openingPeerOffset);
                     int closingPeerOffset = matcher.searchForClosingPeer(openingPeerOffset, openingChar,
-                            org.python.pydev.shared_core.string.StringUtils.getPeer(openingChar), document);
+                            StringUtils.getPeer(openingChar), document);
                     if (closingPeerOffset == -1 || offset <= closingPeerOffset) {
                         return new Tuple<Integer, Boolean>(-1, true); // True because we're inside a parens
                     }
@@ -1165,7 +1189,7 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
 
             //now, there's a little catch here, if we are in a line with an opening peer,
             //we have to choose whether to indent to the opening peer or a little further
-            //e.g.: if the line is 
+            //e.g.: if the line is
             //method(  self <<- a new line here should indent to the start of the self and not
             //to the opening peer.
             if (openingPeerIsInCurrentLine && openingPeerOffset < offset) {
@@ -1224,11 +1248,17 @@ public final class PyAutoIndentStrategy implements IAutoEditStrategy, IHandleScr
      */
     IDocument EMPTY_DOCUMENT = new Document();
 
+    private boolean isCython;
+
     public String convertTabs(String cmd) {
         DocCmd newStr = new DocCmd(0, 0, cmd);
         getIndentPrefs().convertToStd(EMPTY_DOCUMENT, newStr);
         cmd = newStr.text;
         return cmd;
 
+    }
+
+    public void setCythonFile(boolean isCython) {
+        this.isCython = isCython;
     }
 }

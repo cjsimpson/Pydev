@@ -40,6 +40,7 @@ PyDev is a **Python IDE** for **Eclipse**, which may be used in **Python**, **Jy
 .. _Features Matrix: manual_adv_features.html
 .. _History for PyDev Extensions: history_pydev_extensions.html
 .. _History for PyDev: history_pydev.html
+.. _View release notes for previous releases: history_pydev.html
 .. _PyDev Blog: http://pydev.blogspot.com/
 
 .. _Type hinting: manual_adv_type_hints.html
@@ -58,6 +59,7 @@ PyDev is a **Python IDE** for **Eclipse**, which may be used in **Python**, **Jy
 .. _Unittest integration: manual_adv_pyunit.html
 .. _Code coverage: manual_adv_coverage.html
 .. _video: video_pydev_20.html
+.. _Find Referrers in Debugger: manual_adv_debugger_find_referrers.html
 
 It comes with many goodies such as:
 
@@ -71,10 +73,12 @@ It comes with many goodies such as:
 | * `Refactoring`_                                                                                                                                                                                                                                         |    <a href="video_pydev_20.html" border=0><img class="link" src="images/video/snap.png" alt="PyDev 2.0 video" title="Click to see video" /></a>  |
 | * `Debugger`_                                                                                                                                                                                                                                            |                                                                                                                                                  |
 | * `Remote debugger`_                                                                                                                                                                                                                                     |                                                                                                                                                  |
+| * `Find Referrers in Debugger`_                                                                                                                                                                                                                          |                                                                                                                                                  |
 | * `Tokens browser`_                                                                                                                                                                                                                                      |                                                                                                                                                  |
 | * `Interactive console`_                                                                                                                                                                                                                                 |                                                                                                                                                  |
 | * `Unittest integration`_                                                                                                                                                                                                                                |                                                                                                                                                  |
 | * `Code coverage`_                                                                                                                                                                                                                                       |                                                                                                                                                  |
+| * Find References (Ctrl+Shift+G)                                                                                                                                                                                                                         |                                                                                                                                                  |
 | * **and many others**:                                                                                                                                                                                                                                   |                                                                                                                                                  |
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------+
 
@@ -83,17 +87,45 @@ For more details on the provided features, check the `Features Matrix`_.
 
 Important
 ==========
-First time users are strongly advised to read the `Getting started guide`_  which explains how to properly configure PyDev
+First time users are strongly advised to read the `Getting started guide`_  which explains how to properly configure PyDev.
+
+
+LiClipse
+==========
+
+The recommended way of using PyDev is bundled in `LiClipse <http://www.liclipse.com/>`_, which provides PyDev builtin as well as
+support for other languages such as Django Templates, Mako, RST, C++, CoffeScript, Dart, HTML, JavaScript, CSS, among others (also, by licensing
+LiClipse you directly support the development of PyDev).
+
+PyVmMonitor
+============
+
+If you'd like to analyze the performance of your programs, check `PyVmMonitor <http://www.pyvmmonitor.com/>`_.
+
 
 Gold Sponsors
 ==============
 
 .. raw:: html
 
-   <!--Added 2013-07-25-->
-   <a href="http://www.kichwacoders.com/" border=0><img class="sponsors" src="images/sponsors/kichwacoders.png" alt="Kichwacoders" title="http://www.kichwacoders.com/" /></a>
+   <!--Added 2014-07-16-->
+   <a href="http://www.liclipse.com/" border=0><img class="sponsors" src="images/sponsors/liclipse.png" alt="LiClipse" title="http://www.liclipse.com/" /></a>
    <a href="http://www.tracetronic.com" border=0><img class="sponsors" src="images/sponsors/tracetronic.png" alt="Tracetronic" title="http://www.tracetronic.com/" /></a>
+   <a href="http://www.kichwacoders.com/" border=0><img class="sponsors" src="images/sponsors/kichwacoders.png" alt="Kichwacoders" title="http://www.kichwacoders.com/" /></a>
+   <br/>
+   <a href="http://www.dawnsci.org/" border=0><img class="sponsors" src="images/sponsors/dawnsci.png" alt="Dawn science" title="http://www.dawnsci.org/" /></a>
+   <a href="http://www.pyvmmonitor.com/" border=0><img class="sponsors" src="images/sponsors/pyvmmonitor.png" alt="PyVmMonitor" title="http://www.pyvmmonitor.com/" /></a>
    <a href="http://www.squishlist.com/" border=0><img class="sponsors" src="images/sponsors/squishlist.png" alt="Squishlist" title="http://www.squishlist.com/" /></a>
+
+Silver Sponsors
+----------------
+
+.. raw:: html
+
+   <!--Added 2014-09-02-->
+   <a href="http://www.orsoft.net" border=0><img class="sponsors" src="images/sponsors/logo_orsoft.png" alt="ORSOFT GmbH" title="http://www.orsoft.net" /></a>
+   <!--Added 2014-07-16-->
+   <a href="http://vegardit.com" border=0><img class="sponsors" src="images/sponsors/vegardit.png" alt="Vegard IT" title="http://vegardit.com" /></a>
 
 Supporting PyDev
 =================
@@ -101,69 +133,80 @@ Supporting PyDev
 Thank you to all PyDev supporters: https://sw-brainwy.rhcloud.com/supporters/PyDev.
 
 
-
 To show your appreciation for PyDev and to help to keep it going too, support it at https://sw-brainwy.rhcloud.com/. Supporter benefits
 include having votes to decide the next tackled tickets and space in the homepage.
+
+Companies have the option of sponsoring PyDev through corporate sponsorship. See `About/Sponsorship <about.html>`_ for details.
 
 
 .. _`Getting started guide`: manual_101_root.html
 
-Release 2.8.2
+
+
+Release 4.3.0
 ==========================
 
-* The type inference engine now accepts comments in the format **#@type a: str** to get the type.
+* Fixed parser for Python 3.x to support async and await as regular names too (PyDev-593).
 
-* Interpreter configuration properly deals with characters with ampersand.
+* The new search dialog now has a 'whole word' option which automatically adds `*` to the search
 
-* Interactive console can now work with PySide and wxPython to create widgets without blocking.
+* Search backend updated to Lucene 5.2.1.
 
-* Debugger now working properly with Jython 2.1.
+* When bringing up the search dialog the search text is initially selected.
 
-* Markups in sphinx or epydoc format can now have a different color in docstrings.
 
-* Code-completion for the sphinx markup is provided in docstrings.
+Release 4.2.0
+==========================
 
-* Fixed issue when resolving module names (which could make PyDev find modules as Lib.math instead of math if the interpreter folder was added to the PYTHONPATH and not only the Lib folder).
+* New search page for Python contents
 
-* When configuring project source folders (PYTHONPATH), it's possible to make use of the PROJECT_DIR_NAME variable.
+	* Text-searches using a Lucene index allows for fast matches.
+	* Matches can be flattened and grouped by project, folders and modules.
+	* Results page allows additional filtering based on module name.
 
-* **Patches by Trey Greer**:
+	|
 
-	* PyLint 1.0 is now properly supported.
+	.. image:: images/search/search_results.png
+	   :class: no_border
 
-* **Patches by Jonah Graham:**
 
-	* Fixed issue in interactive console interaction with XML-RPC.
+* Further improvements on code completion unpacking compound types.
 
-	* Interactive console history is saved to persistent location.
+* Not adding auto 'import' token in cython files (to accept cimport).
 
-	* It's possible to filter variables in the variables view menu (can be activated with Ctrl+F10 focusing the variables view > PyDev, select/deselect filters).
+* PyDev Mylyn integration no longer depends on a specific PyDev release.
 
-	* Eclipse variables are expanded in the initial interpreter commands for the interactive console.
+* Fixed halting condition when unable to create native file watches.
 
-	* An evaluate button (same as Ctrl+Alt+Enter) is now available in the toolbar.
+* Vertical indent guide no longer slows down the editor on Linux (PyDev-582).
 
-* **Patches by by Anselm Kruis:**
 
-	* Fixed issues related to having the interpreter or workspace in locations with non-ascii characters.
+Release 4.1.0
+==========================
 
-* **Patches by Jeremy Carroll:**
+* **Code Completion**
 
-	* It's now possible to use PEP-8 style imports (default now, can be unconfigured at window > preferencs > pydev > editor > code style > imports).
+	* Improved unpacking of compound types on more situations (PyDev-573).
 
-	* It's possible to configure the organize imports to remove unused imports (must be enabled in window > preferencs > pydev > editor > code style > imports).
+* **Debugger**
 
-* **Patches by Andrew Ferrazzutti:**
+	* PyDev remote debugging no longer blocks running program to completion (PyDev-574).
+	* When there are too many referrers to some object, results are trimmed.
 
-	* Better heuristics to discover file in workspace related to open files when debugging.
+* **Python 3 grammar**
 
-	* Improvements in the PyDev project configuration and wizard.
+	* Accepting **@** as matrix multiplication operator.
+	* **async** and **await** are properly parsed.
+	* Fixed issue parsing 'list remainder' construct (PyDev-568).
 
-	* It's possible to mark/unmark folders as source folders with a right-click context menu.
+* **Others**
 
-	* Auto-Configuration of interpreter streamlined.
+	* Fixed issue showing editor title name when more than one dot was present in the filename.
+	* Support automatic folding elements when opening a file -- must be enabled in PyDev > Editor > Code Folding (patch by Andreas Pakulat).
+	* Fixed issue on search page.
+	* Included css to set default editor colors for PyDev for in Eclipse dark theme.
+	* Tab-stops on comments added and enabled by default (patch by jheiv).
+	* Fixed StackOverflowError on code-completion (PyDev-570)
 
-* **Patches by Andre Berg:**
-
-	* It's possible to have a change action which will keep a variable updated when file is changed (i.e.: __date__ = '2013-01-01' would be updated when file is saved to a new date).
+`View release notes for previous releases`_
 

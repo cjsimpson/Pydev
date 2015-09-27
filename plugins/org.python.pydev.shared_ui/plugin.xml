@@ -14,5 +14,21 @@
       </page>
    </extension>
    -->
-
+   <extension
+         point="org.eclipse.ui.console.consolePageParticipants">
+      <consolePageParticipant
+            class="org.python.pydev.shared_ui.debug.ConsoleRestartLaunchPageParticipant"
+            id="org.python.pydev.shared_ui.debug.ConsoleRestartLaunchPageParticipant">
+         <enablement></enablement>
+      </consolePageParticipant>
+   </extension>
+   
+   <extension
+         point="org.eclipse.ui.elementFactories">
+      <factory
+            class="org.python.pydev.shared_ui.editor_input.PyEditorInputFactory"
+            id="org.python.pydev.editorinput.pyEditorInputFactory">
+      </factory>
+   </extension>
+   
 </plugin>

@@ -8,57 +8,32 @@ package org.python.pydev.core.cache;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
-import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.core.runtime.IStatus;
-import org.eclipse.core.runtime.Status;
-import org.eclipse.core.runtime.jobs.Job;
 import org.python.pydev.core.FastBufferedReader;
-import org.python.pydev.core.ObjectsPool;
-import org.python.pydev.core.ObjectsPool.ObjectsPoolMap;
-import org.python.pydev.shared_core.cache.Cache;
-import org.python.pydev.shared_core.callbacks.ICallback;
+import org.python.pydev.core.ModulesKey;
+import org.python.pydev.core.ModulesKeyForZip;
+import org.python.pydev.core.ObjectsInternPool;
+import org.python.pydev.core.ObjectsInternPool.ObjectsPoolMap;
 import org.python.pydev.shared_core.io.FileUtils;
 import org.python.pydev.shared_core.string.FastStringBuffer;
-import org.python.pydev.shared_core.structure.Tuple;
+import org.python.pydev.shared_core.string.StringUtils;
 
 /**
- * This is a cache that will put its values in the disk for low-memory consumption, so that its size never passes
- * the maxSize specified (so, when retrieving an object from the disk, it might have to store another one before
- * doing so). 
- * 
- * There is a 'catch': its keys must be Strings, as its name will be used as the name of the entry in the disk,
- * so, a 'miss' in memory will try to get it from the disk (and a miss from the disk will mean there is no such key).
- * 
- * -- And yes, the cache itself is Serializable! 
+ * All this cache does is keep a map with the names of the modules we know and its last modification time.
+ * Afterwards it's used to check if our indexes are consistent by comparing with the actual filesystem data.
  */
-public final class DiskCache implements Serializable {
-
-    /**
-     * Updated on 2.1.1 (fixed issue when restoring deltas: add was not OK.)
-     */
-    private static final long serialVersionUID = 4L;
+public final class DiskCache {
 
     private static final boolean DEBUG = false;
 
-    private transient Object lock;
+    public static final int VERSION = 2;
+
+    private final Object lock = new Object();
 
     /**
-     * Maximum number of modules to have in memory (when reaching that limit, a module will have to be removed
-     * before another module is loaded).
-     */
-    public static final int DISK_CACHE_IN_MEMORY = 100;
-
-    /**
-     * This is the folder that the cache can use to persist its values
+     * This is the folder that the cache can use to persist its values (TODO: use lucene to index).
      */
     private String folderToPersist;
 
@@ -67,82 +42,30 @@ public final class DiskCache implements Serializable {
      */
     private Map<CompleteIndexKey, CompleteIndexKey> keys = new HashMap<CompleteIndexKey, CompleteIndexKey>();
 
-    private transient Cache<CompleteIndexKey, CompleteIndexValue> cache;
-
-    /**
-     * The files persisted should have this suffix (should start with .)
-     */
-    private String suffix;
-
-    /**
-     * When serialized, this must be set later on...
-     */
-    public transient ICallback<CompleteIndexValue, String> readFromFileMethod;
-
-    /**
-     * When serialized, this must be set later on...
-     */
-    public transient ICallback<String, CompleteIndexValue> toFileMethod;
-
-    private transient Job scheduleRemoveStale;
-
-    private class JobRemoveStale extends Job {
-
-        public JobRemoveStale() {
-            super("Clear stale references");
-        }
-
-        @Override
-        protected IStatus run(IProgressMonitor monitor) {
-            synchronized (lock) {
-                if (cache != null) {
-                    cache.removeStaleEntries();
-                }
-            }
-            return Status.OK_STATUS;
-        }
-
-    }
-
-    /**
-     * Custom deserialization is needed.
-     */
-    @SuppressWarnings("unchecked")
-    private void readObject(ObjectInputStream aStream) throws IOException, ClassNotFoundException {
-        lock = new Object(); //It's transient, so, we must restore it.
-        aStream.defaultReadObject();
-        keys = (Map<CompleteIndexKey, CompleteIndexKey>) aStream.readObject();
-        folderToPersist = (String) aStream.readObject();
-        suffix = (String) aStream.readObject();
-
-        cache = createCache();
-        scheduleRemoveStale = new JobRemoveStale();
-        if (DEBUG) {
-            System.out.println("Disk cache - read: " + keys.size() + " - " + folderToPersist);
-        }
-    }
-
-    protected Cache<CompleteIndexKey, CompleteIndexValue> createCache() {
-        return new SoftHashMapCache<CompleteIndexKey, CompleteIndexValue>();
-        //        return new LRUCache<CompleteIndexKey, CompleteIndexValue>(DISK_CACHE_IN_MEMORY);
-    }
-
     /**
      * Writes this cache in a format that may later be restored with loadFrom.
      */
     public void writeTo(FastStringBuffer tempBuf) {
-        tempBuf.append("-- START DISKCACHE\n");
+        tempBuf.append("-- START DISKCACHE_" + DiskCache.VERSION + "\n");
         tempBuf.append(folderToPersist);
         tempBuf.append('\n');
-        tempBuf.append(suffix);
-        tempBuf.append('\n');
         for (CompleteIndexKey key : keys.values()) {
-            tempBuf.append(key.key.name);
+            ModulesKey modKey = key.key;
+            tempBuf.append(modKey.name);
             tempBuf.append('|');
             tempBuf.append(key.lastModified);
-            if (key.key.file != null) {
+            tempBuf.append('|');
+            if (modKey.file != null) {
+                tempBuf.append(modKey.file.toString());
+            } else {
+                //could be null!
+            }
+            if (modKey instanceof ModulesKeyForZip) {
+                ModulesKeyForZip modulesKeyForZip = (ModulesKeyForZip) modKey;
                 tempBuf.append('|');
-                tempBuf.append(key.key.file.toString());
+                tempBuf.append(modulesKeyForZip.zipModulePath);
+                tempBuf.append('|');
+                tempBuf.append(modulesKeyForZip.isFile ? '0' : '1');
             }
             tempBuf.append('\n');
         }
@@ -151,7 +74,7 @@ public final class DiskCache implements Serializable {
 
     /**
      * Loads from a reader a string that was acquired from writeTo.
-     * @param objectsPoolMap 
+     * @param objectsPoolMap
      */
     public static DiskCache loadFrom(FastBufferedReader reader, ObjectsPoolMap objectsPoolMap) throws IOException {
         DiskCache diskCache = new DiskCache();
@@ -161,12 +84,6 @@ public final class DiskCache implements Serializable {
             throw new RuntimeException("Unexpected line: " + line);
         }
         diskCache.folderToPersist = line.toString();
-
-        line = reader.readLine();
-        if (line.startsWith("-- ")) {
-            throw new RuntimeException("Unexpected line: " + line);
-        }
-        diskCache.suffix = line.toString();
 
         FastStringBuffer buf = new FastStringBuffer();
         CompleteIndexKey key = null;
@@ -187,10 +104,30 @@ public final class DiskCache implements Serializable {
                     if (c == '|') {
                         switch (part) {
                             case 0:
-                                key = new CompleteIndexKey(ObjectsPool.internLocal(objectsPoolMap, buf.toString()));
+                                key = new CompleteIndexKey(
+                                        ObjectsInternPool.internLocal(objectsPoolMap, buf.toString()));
+                                diskCache.add(key);
                                 break;
                             case 1:
-                                key.lastModified = org.python.pydev.shared_core.string.StringUtils.parsePositiveLong(buf);
+                                key.lastModified = org.python.pydev.shared_core.string.StringUtils
+                                        .parsePositiveLong(buf);
+                                break;
+                            case 2:
+                                if (buf.length() > 0) {
+                                    key.key.file = new File(
+                                            ObjectsInternPool.internLocal(objectsPoolMap, buf.toString()));
+                                }
+                                break;
+                            case 3:
+                                //path in zip
+                                key.key = new ModulesKeyForZip(key.key.name, key.key.file,
+                                        ObjectsInternPool.internLocal(objectsPoolMap, buf.toString()), true);
+                                break;
+                            case 4:
+                                //isfile in zip
+                                if (buf.toString().equals(0)) {
+                                    ((ModulesKeyForZip) key.key).isFile = true;
+                                }
                                 break;
                             default:
                                 throw new RuntimeException("Unexpected part in line: " + line);
@@ -202,16 +139,27 @@ public final class DiskCache implements Serializable {
                     }
                 }
 
+                // Found end of line... this is the last part and depends on where we stopped previously.
                 if (buf.length() > 0) {
                     switch (part) {
                         case 1:
-                            key.lastModified = org.python.pydev.shared_core.string.StringUtils.parsePositiveLong(buf);
+                            key.lastModified = StringUtils.parsePositiveLong(buf);
                             break;
                         case 2:
                             //File also written.
-                            key.key.file = new File(ObjectsPool.internLocal(objectsPoolMap, buf.toString()));
+                            key.key.file = new File(ObjectsInternPool.internLocal(objectsPoolMap, buf.toString()));
                             break;
-
+                        case 3:
+                            //path in zip
+                            key.key = new ModulesKeyForZip(key.key.name, key.key.file,
+                                    ObjectsInternPool.internLocal(objectsPoolMap, buf.toString()), true);
+                            break;
+                        case 4:
+                            //isfile in zip
+                            if (buf.toString().equals(0)) {
+                                ((ModulesKeyForZip) key.key).isFile = true;
+                            }
+                            break;
                     }
                     buf.clear();
                 }
@@ -219,106 +167,13 @@ public final class DiskCache implements Serializable {
         }
     }
 
-    /**
-     * Custom serialization is needed.
-     */
-    private void writeObject(ObjectOutputStream aStream) throws IOException {
-        synchronized (lock) {
-            aStream.defaultWriteObject();
-            //write only the keys
-            aStream.writeObject(keys);
-            //the folder to persist
-            aStream.writeObject(folderToPersist);
-            //the suffix 
-            aStream.writeObject(suffix);
-
-            //the cache will be re-created in a 'clear' state
-
-            if (DEBUG) {
-                System.out.println("Disk cache - write: " + keys.size() + " - " + folderToPersist);
-            }
-        }
-    }
-
     private DiskCache() {
         //private constructor (only used for internal restore of data).
-        lock = new Object(); //It's transient, so, we must restore it.
-        this.scheduleRemoveStale = new JobRemoveStale();
-        this.cache = createCache();
     }
 
-    public DiskCache(File folderToPersist, String suffix, ICallback<CompleteIndexValue, String> readFromFileMethod,
-            ICallback<String, CompleteIndexValue> toFileMethod) {
+    public DiskCache(File folderToPersist, String suffix) {
         this();
         this.folderToPersist = FileUtils.getFileAbsolutePath(folderToPersist);
-        this.suffix = suffix;
-        this.readFromFileMethod = readFromFileMethod;
-        this.toFileMethod = toFileMethod;
-    }
-
-    /**
-     * Returns a tuple with the values in-memory and not in memory.
-     * 
-     * The first value in the returned tuple contains the keys/values in memory and
-     * the second contains a list of the values not in memory 
-     */
-    public Tuple<List<Tuple<CompleteIndexKey, CompleteIndexValue>>, Collection<CompleteIndexKey>> getInMemoryInfo() {
-        synchronized (lock) {
-            List<Tuple<CompleteIndexKey, CompleteIndexValue>> ret0 = new ArrayList<Tuple<CompleteIndexKey, CompleteIndexValue>>();
-            List<CompleteIndexKey> ret1 = new ArrayList<CompleteIndexKey>();
-
-            //Note: no need to iterate in a copy since we're with the lock access.
-
-            //Important: MUST iterate in the values, as the key may have the outdated values (i.e.: even though it's
-            //a map val=val, the val that represents the 'key' may not be updated).
-            for (CompleteIndexKey key : keys.values()) {
-                CompleteIndexValue value = cache.getObj(key);
-                if (value != null) {
-                    ret0.add(new Tuple<CompleteIndexKey, CompleteIndexValue>(key, value));
-                } else {
-                    ret1.add(key);
-                }
-            }
-            scheduleRemoveStale();
-            return new Tuple<List<Tuple<CompleteIndexKey, CompleteIndexValue>>, Collection<CompleteIndexKey>>(ret0,
-                    ret1);
-        }
-    }
-
-    public CompleteIndexValue getObj(CompleteIndexKey key) {
-        synchronized (lock) {
-            scheduleRemoveStale();
-            CompleteIndexValue v = cache.getObj(key);
-            if (v == null && keys.containsKey(key)) {
-                //miss in memory... get from disk
-                File file = getFileForKey(key);
-                if (file.exists()) {
-                    String fileContents = FileUtils.getFileContents(file);
-                    v = (CompleteIndexValue) readFromFileMethod.call(fileContents);
-                } else {
-                    if (DEBUG) {
-                        System.out.println("File: " + file
-                                + " is in the cache but does not exist (so, it will be removed).");
-                    }
-                }
-                if (v == null) {
-                    this.remove(key);
-                    return null;
-                }
-                //put it back in memory
-                cache.add(key, v);
-            }
-            return v;
-        }
-    }
-
-    private File getFileForKey(CompleteIndexKey o) {
-        synchronized (lock) {
-            String name = o.key.name;
-            String md5 = org.python.pydev.shared_core.string.StringUtils.md5(name);
-            name += "_" + md5.substring(0, 4); //Just add 4 chars to it...
-            return new File(folderToPersist, name + suffix);
-        }
     }
 
     /**
@@ -326,13 +181,9 @@ public final class DiskCache implements Serializable {
      */
     public void remove(CompleteIndexKey key) {
         synchronized (lock) {
-            scheduleRemoveStale();
             if (DEBUG) {
                 System.out.println("Disk cache - Removing: " + key);
             }
-            cache.remove(key);
-            File fileForKey = getFileForKey(key);
-            fileForKey.delete();
             keys.remove(key);
         }
     }
@@ -340,27 +191,13 @@ public final class DiskCache implements Serializable {
     /**
      * Adds to both: the memory and the disk
      */
-    public void add(CompleteIndexKey key, CompleteIndexValue n) {
+    public void add(CompleteIndexKey key) {
         synchronized (lock) {
-            scheduleRemoveStale();
-            if (n != null) {
-                cache.add(key, n);
-                File fileForKey = getFileForKey(key);
-                if (DEBUG) {
-                    System.out.println("Disk cache - Adding: " + key + " file: " + fileForKey);
-                }
-                FileUtils.writeStrToFile(toFileMethod.call(n), fileForKey);
-            } else {
-                if (DEBUG) {
-                    System.out.println("Disk cache - Adding: " + key + " with empty value (computed on demand).");
-                }
+            if (DEBUG) {
+                System.out.println("Disk cache - Adding: " + key);
             }
             keys.put(key, key);
         }
-    }
-
-    protected void scheduleRemoveStale() {
-        this.scheduleRemoveStale.schedule(1000);
     }
 
     /**
@@ -371,17 +208,12 @@ public final class DiskCache implements Serializable {
             if (DEBUG) {
                 System.out.println("Disk cache - clear");
             }
-            for (CompleteIndexKey key : keys.keySet()) {
-                File fileForKey = getFileForKey(key);
-                fileForKey.delete();
-            }
             keys.clear();
-            cache.clear();
         }
     }
 
     /**
-     * @return a copy of the keys available 
+     * @return a copy of the keys available
      */
     public Map<CompleteIndexKey, CompleteIndexKey> keys() {
         synchronized (lock) {

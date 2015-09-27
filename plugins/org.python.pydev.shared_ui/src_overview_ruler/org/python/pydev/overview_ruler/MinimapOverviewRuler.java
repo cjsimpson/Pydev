@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013 by Brainwy Software Ltda, Inc. All Rights Reserved.
+ * Copyright (c) 2013-2014 by Brainwy Software Ltda, Inc. All Rights Reserved.
  * Licensed under the terms of the Eclipse Public License (EPL).
  * Please see the license.txt included with this distribution for details.
  * Any modifications to this file must keep this entire header intact.
@@ -29,7 +29,6 @@ import org.eclipse.jface.util.IPropertyChangeListener;
 import org.eclipse.jface.util.PropertyChangeEvent;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.StyledText;
-import org.eclipse.swt.custom.StyledTextContent;
 import org.eclipse.swt.events.DisposeEvent;
 import org.eclipse.swt.events.DisposeListener;
 import org.eclipse.swt.events.MouseEvent;
@@ -49,12 +48,97 @@ import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.editors.text.EditorsUI;
 import org.eclipse.ui.texteditor.AbstractDecoratedTextEditorPreferenceConstants;
+import org.python.pydev.shared_core.callbacks.ICallbackListener;
+import org.python.pydev.shared_core.callbacks.ICallbackWithListeners;
 import org.python.pydev.shared_core.log.Log;
 import org.python.pydev.shared_core.structure.FastStack;
 import org.python.pydev.shared_ui.SharedUiPlugin;
+import org.python.pydev.shared_ui.outline.IOutlineModel;
+import org.python.pydev.shared_ui.outline.IParsedItem;
 import org.python.pydev.shared_ui.utils.RunInUiThread;
 
 public class MinimapOverviewRuler extends CopiedOverviewRuler {
+
+    private Color selectionColor;
+
+    private IPropertyChangeListener listener;
+
+    private IPreferenceStore preferenceStore;
+
+    private IOutlineModel fOutlineModel;
+
+    private IPropertyChangeListener propertyListener;
+
+    private ICallbackListener<IOutlineModel> modelListener;
+
+    private Color getSelectionColor() {
+        if (selectionColor == null || selectionColor.isDisposed()) {
+            preferenceStore = SharedUiPlugin.getDefault().getPreferenceStore();
+            fillSelectionColorField();
+
+            this.listener = new IPropertyChangeListener() {
+
+                @Override
+                public void propertyChange(PropertyChangeEvent event) {
+                    if (MinimapOverviewRulerPreferencesPage.MINIMAP_SELECTION_COLOR.equals(event.getProperty())) {
+                        selectionColor.dispose();
+                        selectionColor = null;
+                        fillSelectionColorField();
+                    }
+                }
+            };
+            preferenceStore.addPropertyChangeListener(listener);
+        }
+        return selectionColor;
+    }
+
+    private void fillSelectionColorField() {
+        String colorCode = preferenceStore.getString(MinimapOverviewRulerPreferencesPage.MINIMAP_SELECTION_COLOR);
+        RGB asRGB = StringConverter.asRGB(colorCode);
+        selectionColor = new Color(Display.getDefault(), asRGB);
+    }
+
+    @Override
+    protected void handleDispose() {
+        try {
+            if (preferenceStore != null && listener != null) {
+                preferenceStore.removePropertyChangeListener(listener);
+                preferenceStore = null;
+                listener = null;
+            }
+        } catch (Exception e) {
+            Log.log(e);
+        }
+        try {
+            if (preferenceStore != null && propertyListener != null) {
+                preferenceStore.removePropertyChangeListener(propertyListener);
+                preferenceStore = null;
+                listener = null;
+            }
+        } catch (Exception e) {
+            Log.log(e);
+        }
+        try {
+            if (selectionColor != null) {
+                selectionColor.dispose();
+            }
+            selectionColor = null;
+        } catch (Exception e) {
+            Log.log(e);
+        }
+        try {
+            if (fOutlineModel != null && modelListener != null) {
+                ICallbackWithListeners<IOutlineModel> onModelChangedListener = fOutlineModel
+                        .getOnModelChangedCallback();
+                onModelChangedListener.unregisterListener(modelListener);
+                modelListener = null;
+            }
+        } catch (Exception e) {
+            Log.log(e);
+        }
+        fOutlineModel = null;
+        super.handleDispose();
+    }
 
     /**
      * Removes whitespaces and tabs at the end of the string.
@@ -95,6 +179,54 @@ public class MinimapOverviewRuler extends CopiedOverviewRuler {
      */
     private final static Object lockStackedParameters = new Object();
 
+    @SuppressWarnings("unused")
+    private static final class Parameters {
+        public final GC gc;
+        public final Color styledTextForeground;
+        public final Point size;
+        public final int lineCount;
+        public final int marginCols;
+        public final Color marginColor;
+        public final int spacing;
+        public final int imageHeight;
+        public final Transform transform;
+        public final Image tmpImage;
+
+        public Parameters(GC gc, Color styledTextForeground, Point size,
+                int lineCount, int marginCols, Color marginColor, int spacing, int imageHeight, Transform transform,
+                Image tmpImage) {
+            this.gc = gc;
+            this.styledTextForeground = styledTextForeground;
+            this.size = size;
+            this.lineCount = lineCount;
+            this.marginCols = marginCols;
+            this.marginColor = marginColor;
+            this.spacing = spacing;
+            this.imageHeight = imageHeight;
+            this.transform = transform;
+            this.tmpImage = tmpImage;
+        }
+
+        public void dispose() {
+            gc.dispose();
+            marginColor.dispose();
+            transform.dispose();
+        }
+
+        public boolean isDisposed() {
+            if (gc.isDisposed()) {
+                return true;
+            }
+            if (marginColor.isDisposed()) {
+                return true;
+            }
+            if (tmpImage.isDisposed()) {
+                return true;
+            }
+            return false;
+        }
+    }
+
     /**
      * Redraws a temporary image in the background and after that's finished, replaces the new base image and asks
      * for a new redraw.
@@ -107,85 +239,69 @@ public class MinimapOverviewRuler extends CopiedOverviewRuler {
             this.setSystem(true);
         }
 
-        private FastStack<Object[]> stackedParameters = new FastStack<Object[]>(20);
+        private FastStack<Parameters> stackedParameters = new FastStack<Parameters>(20);
 
         /**
          * Note: the GC and marginColor need to be disposed after they're used.
          */
-        private void setParameters(GC gc, Color styledTextForeground, Point size, List<String> content,
-                int lineCount, int marginCols, Color marginColor, int spacing, int imageHeight, Transform transform,
-                Image tmpImage) {
+        private void setParameters(Parameters parameters) {
             synchronized (lockStackedParameters) {
-                stackedParameters.push(new Object[] { gc, styledTextForeground, size, content, lineCount, marginCols,
-                        marginColor, spacing, imageHeight, transform, tmpImage });
+                stackedParameters.push(parameters);
             }
         }
 
         /**
-         * Redraws the base image based on the StyledText contents. 
-         * 
+         * Redraws the base image based on the StyledText contents.
+         *
          * (i.e.: draw the lines)
          */
-        private void redrawBaseImage(GC gc, Color styledTextForeground, Point size, List<String> content,
-                int lineCount, int marginCols, Color marginColor, int spacing, int imageHeight, Transform transform,
-                IProgressMonitor monitor) {
-            if (MinimapOverviewRulerPreferencesPage.getShowMinimapContents()) {
-                gc.setForeground(styledTextForeground);
-                gc.setAlpha(200);
-                gc.setTransform(transform);
-                int x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+        private void redrawBaseImage(Parameters parameters, IProgressMonitor monitor) {
+            if (MinimapOverviewRulerPreferencesPage.getShowMinimapContents() && parameters.lineCount > 0
+                    && parameters.size.x > 0) {
 
-                int mergeLevels = (int) (lineCount / 200.0);
-                int nextDrawMax = -1;
-                int nextDrawMin = Integer.MAX_VALUE;
-                for (int i = 0; i < lineCount; i++) {
-                    if (monitor.isCanceled()) {
+                GC gc = parameters.gc;
+                gc.setForeground(parameters.styledTextForeground);
+                gc.setAlpha(200);
+
+                gc.setTransform(parameters.transform);
+
+                IOutlineModel outlineModel = fOutlineModel;
+
+                int x1, x2, y, beginLine;
+                if (outlineModel != null) {
+                    IParsedItem root = outlineModel.getRoot();
+                    if (root == null) {
+                        Log.log("Minimap overview ruler is trying to use outlineModel which was already disposed.");
                         return;
                     }
-
-                    String line;
-                    try {
-                        line = rightTrim(content.get(i));
-                    } catch (Exception e) {
-                        break;
-                    }
-
-                    //if(lineCount > 5000){
-                    //    if(!PySelection.matchesClassLine(line) && !PySelection.matchesFunctionLine(line)){
-                    //        y1 = y2 = y1 + spacing;
-                    //        continue; //Only print lines related to classes/functions
-                    //    }
-                    //}
-
-                    x1 = getFirstCharPosition(line);
-                    x2 = line.length();
-
-                    if (mergeLevels > 0) {
-                        if (x2 > nextDrawMax) {
-                            nextDrawMax = x2;
-                        }
-                        if (x1 < nextDrawMax) {
-                            nextDrawMin = x1;
+                    IParsedItem[] children = root.getChildren();
+                    for (IParsedItem iParsedItem : children) {
+                        if (monitor.isCanceled()) {
+                            return;
                         }
 
-                        if (i % mergeLevels == 0) {
-                            if (nextDrawMax > 0 && nextDrawMin < nextDrawMax) {
-                                gc.drawLine(nextDrawMin, y1, nextDrawMax, y2);
+                        beginLine = iParsedItem.getBeginLine() - 1;
+                        y = (int) ((float) beginLine * parameters.imageHeight / parameters.lineCount);
+                        x1 = iParsedItem.getBeginCol();
+                        x2 = x1 + (iParsedItem.toString().length() * 5);
+                        gc.drawLine(x1, y, x2 - x1, y);
+
+                        IParsedItem[] children2 = iParsedItem.getChildren();
+                        for (IParsedItem iParsedItem2 : children2) {
+                            if (monitor.isCanceled()) {
+                                return;
                             }
-                            nextDrawMax = -1;
-                            nextDrawMin = Integer.MAX_VALUE;
-                        }
-                    } else {
-                        if (x2 > 0) {
-                            gc.drawLine(x1, y1, x2, y2);
+                            beginLine = iParsedItem2.getBeginLine() - 1;
+                            y = (int) ((float) beginLine * parameters.imageHeight / parameters.lineCount);
+                            x1 = iParsedItem2.getBeginCol();
+                            x2 = x1 + (iParsedItem2.toString().length() * 5);
+                            gc.drawLine(x1, y, x2 - x1, y);
+
                         }
                     }
 
-                    y1 = y2 = y1 + spacing;
                 }
-                if (monitor.isCanceled()) {
-                    return;
-                }
+
                 //This would draw the margin.
                 //gc.setForeground(marginColor);
                 //gc.setBackground(marginColor);
@@ -198,41 +314,31 @@ public class MinimapOverviewRuler extends CopiedOverviewRuler {
          */
         @Override
         protected IStatus run(IProgressMonitor monitor) {
-            Object[] parameters;
+            final Parameters parameters;
+            List<Parameters> stackedParametersClone;
+
             synchronized (lockStackedParameters) {
+                if (stackedParameters.empty()) {
+                    //Not much to do in this case...
+                    return Status.OK_STATUS;
+                }
                 parameters = stackedParameters.pop();
-                disposeStackedParameters();
+                stackedParametersClone = fetchStackedParameters();
             }
 
-            GC gc = (GC) parameters[0];
-            if (gc.isDisposed()) {
-                return Status.OK_STATUS;
-            }
-            Color styledTextForeground = (Color) parameters[1];
-            Point size = (Point) parameters[2];
-            List<String> content = (List<String>) parameters[3];
-            int lineCount = (Integer) parameters[4];
-            int marginCols = (Integer) parameters[5];
-            Color marginColor = (Color) parameters[6];
-            if (marginColor.isDisposed()) {
-                return Status.OK_STATUS;
-            }
-            int spacing = (Integer) parameters[7];
-            int imageHeight = (Integer) parameters[8];
-            Transform transform = (Transform) parameters[9];
-            final Image image = (Image) parameters[10];
-            if (image.isDisposed()) {
+            disposeStackedParameters(stackedParametersClone);
+
+            if (parameters.isDisposed()) {
                 return Status.OK_STATUS;
             }
 
             try {
-                redrawBaseImage(gc, styledTextForeground, size, content, lineCount, marginCols, marginColor, spacing,
-                        imageHeight, transform, monitor);
+                redrawBaseImage(parameters, monitor);
             } catch (Throwable e) {
                 Log.log(e);
             } finally {
-                gc.dispose();
-                marginColor.dispose();
+                parameters.gc.dispose();
+                parameters.marginColor.dispose();
             }
             boolean disposeOfImage = true;
             try {
@@ -243,17 +349,17 @@ public class MinimapOverviewRuler extends CopiedOverviewRuler {
                         RunInUiThread.async(new Runnable() {
 
                             public void run() {
-                                //The baseImage should only be disposed in the UI thread (so, no locks are needed to 
+                                //The baseImage should only be disposed in the UI thread (so, no locks are needed to
                                 //replace/dispose the image)
                                 if (baseImage != null && !baseImage.isDisposed()) {
                                     baseImage.dispose();
                                 }
 
                                 if (c != null && !c.isDisposed()) {
-                                    baseImage = image;
+                                    baseImage = parameters.tmpImage;
                                     MinimapOverviewRuler.this.redraw();
                                 } else {
-                                    image.dispose();
+                                    parameters.tmpImage.dispose();
                                 }
                             }
                         });
@@ -261,42 +367,66 @@ public class MinimapOverviewRuler extends CopiedOverviewRuler {
                 }
             } finally {
                 if (disposeOfImage) {
-                    image.dispose();
+                    parameters.tmpImage.dispose();
                 }
             }
 
             return Status.OK_STATUS;
         }
 
+        private List<Parameters> fetchStackedParameters() {
+            ArrayList<Parameters> stackedParametersClone = new ArrayList<Parameters>();
+
+            synchronized (lockStackedParameters) {
+                while (stackedParameters.size() > 0) {
+                    Parameters disposeOfParameters = stackedParameters.pop();
+                    stackedParametersClone.add(disposeOfParameters);
+                }
+            }
+
+            return stackedParametersClone;
+        }
+
         /**
          * Disposes of any parameters in the stack that need an explicit dispose().
          */
         public void disposeStackedParameters() {
-            synchronized (lockStackedParameters) {
-                while (stackedParameters.size() > 0) {
-                    Object[] disposeOfParameters = stackedParameters.pop();
-                    GC gc = (GC) disposeOfParameters[0];
-                    Color marginColor = (Color) disposeOfParameters[6];
-                    Transform transform = (Transform) disposeOfParameters[9];
-                    gc.dispose();
-                    marginColor.dispose();
-                    transform.dispose();
-                }
+            disposeStackedParameters(fetchStackedParameters());
+        }
+
+        private void disposeStackedParameters(List<Parameters> stackedParametersClone) {
+            for (Parameters disposeOfParameters : stackedParametersClone) {
+                disposeOfParameters.dispose();
             }
         }
     }
 
-    public MinimapOverviewRuler(IAnnotationAccess annotationAccess, ISharedTextColors sharedColors) {
+    public MinimapOverviewRuler(IAnnotationAccess annotationAccess, ISharedTextColors sharedColors,
+            IOutlineModel outlineModel) {
         super(annotationAccess, MinimapOverviewRulerPreferencesPage.getMinimapWidth(), sharedColors);
-        SharedUiPlugin.getDefault().getPreferenceStore().addPropertyChangeListener(new IPropertyChangeListener() {
+        this.fOutlineModel = outlineModel;
+        propertyListener = new IPropertyChangeListener() {
 
             public void propertyChange(PropertyChangeEvent event) {
                 if (MinimapOverviewRulerPreferencesPage.MINIMAP_WIDTH.equals(event.getProperty())) {
                     updateWidth();
                 }
             }
-        });
+        };
 
+        if (outlineModel != null) {
+            modelListener = new ICallbackListener<IOutlineModel>() {
+
+                @Override
+                public Object call(IOutlineModel obj) {
+                    lastModelChange = System.currentTimeMillis();
+                    update();
+                    return null;
+                }
+            };
+            ICallbackWithListeners<IOutlineModel> onModelChangedListener = outlineModel.getOnModelChangedCallback();
+            onModelChangedListener.registerListener(modelListener);
+        }
     }
 
     private void updateWidth() {
@@ -314,12 +444,28 @@ public class MinimapOverviewRuler extends CopiedOverviewRuler {
         }
     };
 
+    private Color lastBackground;
+    private Color lastForeground;
+
     @Override
     protected void doubleBufferPaint(GC dest) {
         if (fTextViewer != null) {
             StyledText textWidget = fTextViewer.getTextWidget();
-            fCanvas.setBackground(textWidget.getBackground());
-            fCanvas.setForeground(textWidget.getForeground());
+            //Calling setBackground/setForeground leads to a repaint on some Linux variants (ubuntu 12), so
+            //we must only call it if it actually changed to prevent a repaint.
+            //View: https://sw-brainwy.rhcloud.com/tracker/LiClipse/120
+            Color background = textWidget.getBackground();
+            if (lastBackground == null || !lastBackground.equals(background)) {
+                fCanvas.setBackground(background);
+                lastBackground = background;
+            }
+
+            Color foreground = textWidget.getForeground();
+            if (lastForeground == null || !lastForeground.equals(foreground)) {
+                fCanvas.setForeground(foreground);
+                lastForeground = foreground;
+            }
+
         }
         super.doubleBufferPaint(dest);
     }
@@ -385,6 +531,7 @@ public class MinimapOverviewRuler extends CopiedOverviewRuler {
     private volatile Image baseImage;
     private volatile Image lastImage;
     private Object[] cacheKey;
+    private long lastModelChange;
     private final RedrawJob redrawJob = new RedrawJob("Redraw overview ruler");
 
     @Override
@@ -397,17 +544,6 @@ public class MinimapOverviewRuler extends CopiedOverviewRuler {
                 final Point size = fCanvas.getSize();
                 if (size.x != 0 && size.y != 0) {
 
-                    final StyledTextContent styledTextContent = styledText.getContent();
-                    int styledLineCount = styledTextContent.getLineCount();
-                    List<String> content = new ArrayList<String>(styledLineCount);
-                    for (int i = 0; i < styledLineCount; i++) {
-                        try {
-                            content.add(styledTextContent.getLine(i));
-                        } catch (Exception e) {
-                            break;
-                        }
-                    }
-
                     final int lineCount = super.getLineCount(styledText);
                     IPreferenceStore preferenceStore = EditorsUI.getPreferenceStore();
                     final int marginCols = preferenceStore
@@ -416,7 +552,6 @@ public class MinimapOverviewRuler extends CopiedOverviewRuler {
                             .getString(AbstractDecoratedTextEditorPreferenceConstants.EDITOR_PRINT_MARGIN_COLOR);
                     RGB marginRgb = StringConverter.asRGB(strColor);
                     Color marginColor = new Color(Display.getCurrent(), marginRgb);
-                    Color gray = new Color(Display.getCurrent(), new RGB(127, 127, 127));
 
                     int maxChars = (int) (marginCols + (marginCols * 0.1));
                     final int spacing = 1;
@@ -427,12 +562,13 @@ public class MinimapOverviewRuler extends CopiedOverviewRuler {
                     boolean isDark = (background.getRed() * 0.21) + (background.getGreen() * 0.71)
                             + (background.getBlue() * 0.07) <= 128;
                     Object[] currCacheKey = new Object[] { document.getModificationStamp(), size.x, size.y,
-                            styledText.getForeground(), background, marginCols, marginRgb };
+                            styledText.getForeground(), background, marginCols, marginRgb, lastModelChange };
 
                     double scaleX = size.x / (double) imageWidth;
                     double scaleY = size.y / (double) imageHeight;
                     Transform transform = new Transform(Display.getCurrent());
                     transform.scale((float) scaleX, (float) scaleY);
+                    final Color styledTextForeground = styledText.getForeground();
 
                     if (baseImage == null || !Arrays.equals(this.cacheKey, currCacheKey)) {
                         this.cacheKey = currCacheKey;
@@ -445,11 +581,10 @@ public class MinimapOverviewRuler extends CopiedOverviewRuler {
                         gc.setForeground(background);
                         gc.fillRectangle(0, 0, size.x, size.y);
 
-                        final Color styledTextForeground = styledText.getForeground();
                         final Color marginColor2 = new Color(Display.getCurrent(), marginRgb);
                         redrawJob.cancel();
-                        redrawJob.setParameters(gc, styledTextForeground, size, content, lineCount, marginCols,
-                                marginColor2, spacing, imageHeight, transform, tmpImage);
+                        redrawJob.setParameters(new Parameters(gc, styledTextForeground, size, lineCount, marginCols,
+                                marginColor2, spacing, imageHeight, transform, tmpImage));
 
                         redrawJob.schedule();
                     }
@@ -464,6 +599,8 @@ public class MinimapOverviewRuler extends CopiedOverviewRuler {
                             GC gc2 = new GC(image);
                             gc2.setAntialias(SWT.ON);
                             try {
+                                gc2.setBackground(background);
+                                gc2.fillRectangle(0, 0, size.x, size.y);
                                 gc2.drawImage(baseImage, 0, 0);
 
                                 Rectangle clientArea = styledText.getClientArea();
@@ -474,21 +611,30 @@ public class MinimapOverviewRuler extends CopiedOverviewRuler {
                                         (bottom * spacing) - (top * spacing) };
                                 transform.transform(rect);
 
+                                //Draw only a line at the left side.
                                 gc2.setLineWidth(3);
+                                gc2.setAlpha(30);
+                                gc2.setForeground(styledTextForeground);
+                                gc2.drawLine(0, 0, 0, size.y);
+
+                                //Draw the selection area
                                 if (!isDark) {
                                     gc2.setAlpha(30);
                                 } else {
-                                    gc2.setAlpha(80);
+                                    gc2.setAlpha(100);
                                 }
-                                gc2.setForeground(gray);
-                                gc2.setBackground(gray);
+                                Color localSelectionColor = this.getSelectionColor();
+                                if (localSelectionColor.isDisposed()) {
+                                    //Shouldn't really happen as we should do all in the main thread, but just in case...
+                                    localSelectionColor = styledText.getSelectionBackground();
+                                }
+
+                                gc2.setForeground(localSelectionColor);
+                                gc2.setBackground(localSelectionColor);
 
                                 //Fill selected area in the overview ruler.
                                 gc2.fillRectangle(Math.round(rect[0]), Math.round(rect[1]), Math.round(rect[2]),
                                         Math.round(rect[3]));
-
-                                //Draw only a line at the left side.
-                                gc2.drawLine(0, 0, 0, size.y);
 
                                 //Draw a border around the selected area
                                 gc2.setAlpha(255);
@@ -508,7 +654,6 @@ public class MinimapOverviewRuler extends CopiedOverviewRuler {
                         }
                     } finally {
                         marginColor.dispose();
-                        gray.dispose();
                     }
 
                 }

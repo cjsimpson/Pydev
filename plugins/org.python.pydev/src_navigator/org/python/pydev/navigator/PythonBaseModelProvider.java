@@ -48,6 +48,7 @@ import org.eclipse.jface.viewers.AbstractTreeViewer;
 import org.eclipse.jface.viewers.StructuredViewer;
 import org.eclipse.jface.viewers.Viewer;
 import org.eclipse.jface.viewers.ViewerFilter;
+import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.ui.IWorkingSet;
 import org.eclipse.ui.PlatformUI;
@@ -86,18 +87,20 @@ import org.python.pydev.plugin.preferences.PyTitlePreferencesPage;
 import org.python.pydev.shared_core.SharedCorePlugin;
 import org.python.pydev.shared_core.callbacks.ICallback;
 import org.python.pydev.shared_core.structure.TreeNode;
+import org.python.pydev.shared_ui.SharedUiPlugin;
+import org.python.pydev.shared_ui.UIConstants;
 import org.python.pydev.shared_ui.outline.IParsedItem;
 import org.python.pydev.ui.filetypes.FileTypesPreferencesPage;
 
 /**
  * A good part of the refresh for the model was gotten from org.eclipse.ui.model.WorkbenchContentProvider
  * (mostly just changed the way to get content changes in python files)
- * 
- * There are other important notifications that we need to learn about. 
+ *
+ * There are other important notifications that we need to learn about.
  * Namely:
  *  - When a source folder is created
  *  - When the way to see it changes (flat or not)
- * 
+ *
  * @author Fabio
  */
 public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvider implements IResourceChangeListener,
@@ -112,13 +115,6 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
      * Type of the error markers to show in the pydev package explorer.
      */
     public static final String PYDEV_PACKAGE_EXPORER_PROBLEM_MARKER = "org.python.pydev.PydevProjectErrorMarkers";
-
-    /**
-     * These are the source folders that can be found in this file provider. The way we
-     * see things in this provider, the python model starts only after some source folder
-     * is found.
-     */
-    private Map<IProject, ProjectInfoForPackageExplorer> projectToSourceFolders = new HashMap<IProject, ProjectInfoForPackageExplorer>();
 
     /**
      * This is the viewer that we're using to see the contents of this file provider.
@@ -138,7 +134,7 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
 
     /**
      * This callback should return the working sets available.
-     * 
+     *
      * It's done this way (and not final) because we want to mock it on tests.
      */
     protected static ICallback<List<IWorkingSet>, IWorkspaceRoot> getWorkingSetsCallback = new ICallback<List<IWorkingSet>, IWorkspaceRoot>() {
@@ -195,6 +191,7 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
             super("Model provider updating pythonpath");
         }
 
+        @Override
         protected IStatus run(IProgressMonitor monitor) {
             IProject projectToUse;
             List<String> projectPythonpathToUse;
@@ -245,8 +242,8 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
 
     /**
      * Helper so that we can have many notifications and create a single request.
-     * @param projectPythonpath 
-     * @param project 
+     * @param projectPythonpath
+     * @param project
      */
     private void createAndStartUpdater(IProject project, List<String> projectPythonpath) {
         Updater updater = getUpdater(project);
@@ -303,12 +300,16 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
     }
 
     /**
-     * This is the actual implementation of the rebuild. 
-     * 
-     * @return the element that should be refreshed.
+     * This is the actual implementation of the rebuild.
+     *
+     * @return the element that should be refreshed or null if the project location can't be determined!
      */
     /*default*/IResource internalDoNotifyPythonPathRebuilt(IProject project, List<String> projectPythonpath) {
         IResource refreshObject = project;
+        IPath location = project.getLocation();
+        if (location == null) {
+            return null;
+        }
 
         if (DEBUG) {
             System.out.println("\n\nRebuilding pythonpath: " + project + " - " + projectPythonpath);
@@ -317,13 +318,13 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
 
         for (String string : projectPythonpath) {
             Path newPath = new Path(string);
-            if (project.getLocation().equals(newPath)) {
+            if (location.equals(newPath)) {
                 refreshObject = project.getParent();
             }
             projectPythonpathSet.add(newPath);
         }
 
-        ProjectInfoForPackageExplorer projectInfo = getProjectInfo(project);
+        ProjectInfoForPackageExplorer projectInfo = ProjectInfoForPackageExplorer.getProjectInfo(project);
         if (projectInfo != null) {
             projectInfo.recreateInfo(project);
 
@@ -369,8 +370,8 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
     /**
      * Given some IResource in the filesystem, return the representation for it in the python model
      * or the resource itself if it could not be found in the python model.
-     * 
-     * Note that this method only returns some resource already created (it does not 
+     *
+     * Note that this method only returns some resource already created (it does not
      * create some resource if it still does not exist)
      */
     protected Object getResourceInPythonModel(IResource object, boolean removeFoundResource,
@@ -409,42 +410,11 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
     }
 
     /**
-     * @return the information on a project. Can create it if it's not available.
-     */
-    protected synchronized ProjectInfoForPackageExplorer getProjectInfo(final IProject project) {
-        if (project == null) {
-            return null;
-        }
-        Map<IProject, ProjectInfoForPackageExplorer> p = projectToSourceFolders;
-        if (p != null) {
-            ProjectInfoForPackageExplorer projectInfo = p.get(project);
-            if (projectInfo == null) {
-                if (!project.isOpen()) {
-                    return null;
-                }
-                //No project info: create it
-                projectInfo = p.get(project);
-                if (projectInfo == null) {
-                    projectInfo = new ProjectInfoForPackageExplorer(project);
-                    p.put(project, projectInfo);
-                }
-            } else {
-                if (!project.isOpen()) {
-                    p.remove(project);
-                    projectInfo = null;
-                }
-            }
-            return projectInfo;
-        }
-        return null;
-    }
-
-    /**
      * @param object: the resource we're interested in
      * @return a set with the PythonSourceFolder that exist in the project that contains it
      */
     protected Set<PythonSourceFolder> getProjectSourceFolders(IProject project) {
-        ProjectInfoForPackageExplorer projectInfo = getProjectInfo(project);
+        ProjectInfoForPackageExplorer projectInfo = ProjectInfoForPackageExplorer.getProjectInfo(project);
         if (projectInfo != null) {
             return projectInfo.sourceFolders;
         }
@@ -454,6 +424,7 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
     /**
      * @return the parent for some element.
      */
+    @Override
     public Object getParent(Object element) {
         if (DEBUG) {
             System.out.println("getParent for: " + element);
@@ -489,13 +460,14 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
     }
 
     /**
-     * @return whether there are children for the given element. Note that there is 
-     * an optimization in this method, so that it works correctly for elements that 
+     * @return whether there are children for the given element. Note that there is
+     * an optimization in this method, so that it works correctly for elements that
      * are not python files, and returns true if it is a python file with any content
-     * (even if that content does not actually map to a node. 
-     * 
+     * (even if that content does not actually map to a node.
+     *
      * @see org.eclipse.ui.model.BaseWorkbenchContentProvider#hasChildren(java.lang.Object)
      */
+    @Override
     public boolean hasChildren(Object element) {
         if (element instanceof PythonFile) {
             //If we're not showing nodes, return false.
@@ -537,11 +509,11 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
 
     /**
      * The inputs for this method are:
-     * 
+     *
      * IWorkingSet (in which case it will return the projects -- IResource -- that are a part of the working set)
      * IResource (in which case it will return IWrappedResource or IResources)
      * IWrappedResource (in which case it will return IWrappedResources)
-     * 
+     *
      * @return the children for some element (IWrappedResource or IResource)
      */
     @Override
@@ -562,7 +534,12 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
         } else if (parentElement instanceof IWorkspaceRoot) {
             switch (topLevelChoice.getRootMode()) {
                 case TopLevelProjectsOrWorkingSetChoice.WORKING_SETS:
-                    return PlatformUI.getWorkbench().getWorkingSetManager().getWorkingSets();
+                    IWorkingSet[] workingSets = PlatformUI.getWorkbench().getWorkingSetManager().getWorkingSets();
+                    if (workingSets == null || workingSets.length == 0) {
+                        TreeNode noWorkingSets = createErrorNoWorkingSetsDefined(parentElement);
+                        return new Object[] { noWorkingSets };
+                    }
+                    return workingSets;
                 case TopLevelProjectsOrWorkingSetChoice.PROJECTS:
                     //Just go on...
             }
@@ -571,6 +548,9 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
             if (parentElement instanceof IWorkingSet) {
                 IWorkingSet workingSet = (IWorkingSet) parentElement;
                 childrenToReturn = workingSet.getElements();
+                if (childrenToReturn == null || childrenToReturn.length == 0) {
+                    childrenToReturn = new Object[] { createErrorWorkingSetWithoutChildren(workingSet) };
+                }
             }
 
         } else if (parentElement instanceof TreeNode<?>) {
@@ -587,9 +567,31 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
         return childrenToReturn;
     }
 
+    private TreeNode<LabelAndImage> createErrorWorkingSetWithoutChildren(IWorkingSet parentElement) {
+        Image img = SharedUiPlugin.getImageCache().get(UIConstants.WARNING);
+        TreeNode<LabelAndImage> root = new TreeNode<LabelAndImage>(parentElement,
+                new LabelAndImage("Warning: working set: " + parentElement.getName() + " does not have any contents.",
+                        img));
+        new TreeNode<>(root, new LabelAndImage(
+                "Access the menu (Ctrl+F10) to edit the working set.", null));
+        new TreeNode<>(root, new LabelAndImage(
+                "Or select the working set in the tree and use Alt+Enter.", null));
+        return root;
+    }
+
+    public TreeNode<LabelAndImage> createErrorNoWorkingSetsDefined(Object parentElement) {
+        Image img = SharedUiPlugin.getImageCache().get(UIConstants.WARNING);
+        TreeNode<LabelAndImage> root = new TreeNode<LabelAndImage>(parentElement,
+                new LabelAndImage("Warning: Top level elements set to working sets but no working sets are defined.",
+                        img));
+        new TreeNode<>(root, new LabelAndImage(
+                "Access the menu (Ctrl+F10) to change to show projects or create a working set.", null));
+        return root;
+    }
+
     /**
      * @param parentElement an IResource from where we want to get the children (or a working set)
-     *  
+     *
      * @return as we're not below a source folder here, we have still not entered the 'python' domain,
      * and as the starting point for the 'python' domain is always a source folder, the things
      * that can be returned are IResources and PythonSourceFolders.
@@ -643,7 +645,7 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
                 IContainer container = (IContainer) child;
 
                 try {
-                    //check if it is a source folder (and if it is, create it) 
+                    //check if it is a source folder (and if it is, create it)
                     if (localNature == null) {
                         if (container instanceof IProject) {
                             localProject = (IProject) container;
@@ -687,11 +689,11 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
     /**
      * @param wrappedResourceParent: this is the parent that is an IWrappedResource (which means
      * that children will also be IWrappedResources)
-     * 
+     *
      * @return the children (an array of IWrappedResources)
      */
     private Object[] getChildrenForIWrappedResource(IWrappedResource wrappedResourceParent) {
-        //------------------------------------------------------------------- get python nature 
+        //------------------------------------------------------------------- get python nature
         PythonNature nature = null;
         Object[] childrenToReturn = null;
         Object obj = wrappedResourceParent.getActualObject();
@@ -704,7 +706,7 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
             }
         }
 
-        //------------------------------------------------------------------- treat python nodes 
+        //------------------------------------------------------------------- treat python nodes
         if (wrappedResourceParent instanceof PythonNode) {
             PythonNode node = (PythonNode) wrappedResourceParent;
             childrenToReturn = getChildrenFromParsedItem(wrappedResourceParent, node.entry, node.pythonFile);
@@ -766,15 +768,15 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
     }
 
     /**
-     * This method changes the contents of the children so that the actual types are mapped to 
+     * This method changes the contents of the children so that the actual types are mapped to
      * elements of our python model.
-     * 
+     *
      * @param parent the parent (from the python model)
      * @param pythonSourceFolder this is the source folder that contains this resource
      * @param children these are the children thot should be wrapped (note that this array
      * is not actually changed -- a new array is created and returned).
-     * 
-     * @return an array with the wrapped types 
+     *
+     * @return an array with the wrapped types
      */
     protected Object[] wrapChildren(IWrappedResource parent, PythonSourceFolder pythonSourceFolder, Object[] children) {
         List<Object> ret = new ArrayList<Object>(children.length);
@@ -831,9 +833,9 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
     /*
      * (non-Javadoc) Method declared on IContentProvider.
      */
+    @Override
     public void dispose() {
         try {
-            this.projectToSourceFolders = null;
             if (viewer != null) {
                 IWorkspace[] workspace = null;
                 Object obj = viewer.getInput();
@@ -879,6 +881,7 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
     /*
      * (non-Javadoc) Method declared on IContentProvider.
      */
+    @Override
     public void inputChanged(Viewer viewer, Object oldInput, Object newInput) {
         super.inputChanged(viewer, oldInput, newInput);
 
@@ -946,7 +949,7 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
         HashSet<IWorkspace> set = new HashSet<IWorkspace>();
 
         for (IAdaptable adaptable : elements) {
-            IResource adapter = (IResource) adaptable.getAdapter(IResource.class);
+            IResource adapter = adaptable.getAdapter(IResource.class);
             if (adapter != null) {
                 IWorkspace workspace = adapter.getWorkspace();
                 set.add(workspace);
@@ -966,7 +969,7 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
 
     /**
      * Process the resource delta.
-     * 
+     *
      * @param delta
      */
     protected void processDelta(IResourceDelta delta) {
@@ -1003,7 +1006,7 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
             ctrl.getDisplay().asyncExec(new Runnable() {
                 /*
                  * (non-Javadoc)
-                 * 
+                 *
                  * @see java.lang.Runnable#run()
                  */
                 public void run() {
@@ -1184,7 +1187,7 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
         Runnable addAndRemove = new Runnable() {
             public void run() {
                 if (viewer instanceof AbstractTreeViewer) {
-                    AbstractTreeViewer treeViewer = (AbstractTreeViewer) viewer;
+                    AbstractTreeViewer treeViewer = viewer;
                     // Disable redraw until the operation is finished so we don't
                     // get a flash of both the new and old item (in the case of
                     // rename)
@@ -1246,7 +1249,7 @@ public abstract class PythonBaseModelProvider extends BaseWorkbenchContentProvid
 
     /**
      * Checks if a given resource is an __init__ file and if it is, updates its parent (because its icon may have changed)
-     * @return 
+     * @return
      */
     private boolean checkInit(final IResource resource, final Collection<Runnable> runnables) {
         if (resource != null) {

@@ -18,6 +18,9 @@ import junit.framework.TestCase;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IWorkspaceRoot;
+import org.eclipse.core.runtime.Assert;
+import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.Path;
 import org.eclipse.ui.IWorkingSet;
 import org.eclipse.ui.navigator.PipelinedShapeModification;
 import org.eclipse.ui.navigator.PipelinedViewerUpdate;
@@ -29,6 +32,11 @@ import org.python.pydev.navigator.elements.PythonProjectSourceFolder;
 import org.python.pydev.navigator.elements.PythonSourceFolder;
 import org.python.pydev.plugin.nature.PythonNature;
 import org.python.pydev.shared_core.callbacks.ICallback;
+import org.python.pydev.shared_core.resource_stubs.FileStub;
+import org.python.pydev.shared_core.resource_stubs.FolderStub;
+import org.python.pydev.shared_core.resource_stubs.ProjectStub;
+import org.python.pydev.shared_core.resource_stubs.WorkingSetStub;
+import org.python.pydev.shared_core.resource_stubs.WorkspaceRootStub;
 
 @SuppressWarnings("unchecked")
 public class PythonModelProviderTest extends TestCase {
@@ -48,11 +56,13 @@ public class PythonModelProviderTest extends TestCase {
 
     }
 
+    @Override
     protected void setUp() throws Exception {
         super.setUp();
         PythonNature.IN_TESTS = true;
     }
 
+    @Override
     protected void tearDown() throws Exception {
         super.tearDown();
         PythonNature.IN_TESTS = false;
@@ -227,7 +237,18 @@ public class PythonModelProviderTest extends TestCase {
         PythonNature nature = new PythonNature() {
             @Override
             public IPythonPathNature getPythonPathNature() {
-                return new PythonPathNatureStub(pythonPathSet);
+                HashSet<String> hashSet = new HashSet<>();
+                IPath base = Path.fromOSString(TestDependent.TEST_PYSRC_NAVIGATOR_LOC);
+                for (String s : pythonPathSet) {
+                    if (s.equals("invalid")) {
+                        hashSet.add(s);
+                    } else {
+                        IPath p = Path.fromOSString(s);
+                        Assert.isTrue(base.isPrefixOf(p), "Expected: " + base + " to be prefix of: " + p);
+                        hashSet.add(p.makeRelativeTo(base).toString());
+                    }
+                }
+                return new PythonPathNatureStub(hashSet);
             }
         };
         return nature;

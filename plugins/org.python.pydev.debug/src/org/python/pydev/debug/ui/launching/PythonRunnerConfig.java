@@ -36,13 +36,13 @@ import org.eclipse.debug.core.ILaunchManager;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.python.copiedfromeclipsesrc.JDTNotAvailableException;
 import org.python.copiedfromeclipsesrc.JavaVmLocationFinder;
+import org.python.pydev.core.ExtensionHelper;
 import org.python.pydev.core.IInterpreterInfo;
 import org.python.pydev.core.IInterpreterManager;
 import org.python.pydev.core.IPythonNature;
 import org.python.pydev.core.MisconfigurationException;
 import org.python.pydev.core.PythonNatureWithoutProjectException;
 import org.python.pydev.core.docutils.StringSubstitution;
-import org.python.pydev.core.docutils.StringUtils;
 import org.python.pydev.core.log.Log;
 import org.python.pydev.debug.codecoverage.PyCodeCoverageView;
 import org.python.pydev.debug.codecoverage.PyCoverage;
@@ -50,7 +50,9 @@ import org.python.pydev.debug.codecoverage.PyCoveragePreferences;
 import org.python.pydev.debug.core.Constants;
 import org.python.pydev.debug.core.PydevDebugPlugin;
 import org.python.pydev.debug.model.remote.ListenConnector;
+import org.python.pydev.debug.profile.PyProfilePreferences;
 import org.python.pydev.debug.pyunit.PyUnitServer;
+import org.python.pydev.debug.ui.DebugPrefsPage;
 import org.python.pydev.debug.ui.launching.PythonRunnerCallbacks.CreatedCommandLineParams;
 import org.python.pydev.editor.preferences.PydevEditorPrefs;
 import org.python.pydev.plugin.PydevPlugin;
@@ -60,7 +62,9 @@ import org.python.pydev.pyunit.preferences.PyUnitPrefsPage2;
 import org.python.pydev.runners.SimpleRunner;
 import org.python.pydev.shared_core.io.FileUtils;
 import org.python.pydev.shared_core.net.LocalHost;
+import org.python.pydev.shared_core.process.ProcessUtils;
 import org.python.pydev.shared_core.string.FastStringBuffer;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_core.structure.Tuple;
 import org.python.pydev.shared_core.utils.PlatformUtils;
 import org.python.pydev.shared_ui.utils.RunInUiThread;
@@ -193,11 +197,7 @@ public class PythonRunnerConfig {
      * @return the array of arguments
      */
     public static String[] parseStringIntoList(String arguments) {
-        if (arguments == null || arguments.length() == 0) {
-            return new String[0];
-        }
-        String[] res = DebugPlugin.parseArguments(arguments);
-        return res;
+        return ProcessUtils.parseArguments(arguments);
     }
 
     private static StringSubstitution getStringSubstitution(IPythonNature nature) {
@@ -450,6 +450,8 @@ public class PythonRunnerConfig {
             envp = interpreterLocation.updateEnv(envp, envMap.keySet());
         }
 
+        boolean hasDjangoNature = project.hasNature(PythonNature.DJANGO_NATURE_ID);
+
         String settingsModule = null;
         Map<String, String> variableSubstitution = null;
         final String djangoSettingsKey = "DJANGO_SETTINGS_MODULE";
@@ -465,10 +467,14 @@ public class PythonRunnerConfig {
         } catch (Exception e1) {
             Log.log(e1);
         }
-        if (djangoSettingsEnvEntry == null) {
-            //Default if not specified.
+        if (djangoSettingsEnvEntry == null && hasDjangoNature) {
+            //Default if not specified (only add it if the nature is there).
             djangoSettingsEnvEntry = djangoSettingsKey + "=" + project.getName() + ".settings";
         }
+
+        //Note: set flag even if not debugging as the user may use remote-debugging later on.
+        boolean geventSupport = DebugPrefsPage.getGeventDebugging()
+                && pythonNature.getInterpreterType() == IPythonNature.INTERPRETER_TYPE_PYTHON;
 
         //Now, set the pythonpathUsed according to what's in the environment.
         String p = "";
@@ -491,11 +497,21 @@ public class PythonRunnerConfig {
                     djangoSettingsEnvEntry = null;
                 }
             }
+
+            if (geventSupport) {
+                if (var.equals("GEVENT_SUPPORT")) {
+                    //Flag already set in the environment
+                    geventSupport = false;
+                }
+            }
         }
 
         //Still not added, let's do that now.
         if (djangoSettingsEnvEntry != null) {
             envp = StringUtils.addString(envp, djangoSettingsEnvEntry);
+        }
+        if (geventSupport) {
+            envp = StringUtils.addString(envp, "GEVENT_SUPPORT=True");
         }
         this.pythonpathUsed = p;
     }
@@ -622,6 +638,8 @@ public class PythonRunnerConfig {
     public String[] getCommandLine(boolean actualRun) throws CoreException, JDTNotAvailableException {
         List<String> cmdArgs = new ArrayList<String>();
 
+        boolean profileRun = PyProfilePreferences.getAllRunsDoProfile();
+
         if (isJython()) {
             //"java.exe" -classpath "C:\bin\jython21\jython.jar" org.python.util.jython script %ARGS%
             String javaLoc = JavaVmLocationFinder.findDefaultJavaExecutable().getAbsolutePath();
@@ -647,6 +665,7 @@ public class PythonRunnerConfig {
             cmdArgs.add("-Dpython.path=" + pythonpathUsed); //will be added to the env variables in the run (check if this works on all platforms...)
 
             addVmArgs(cmdArgs);
+            addProfileArgs(cmdArgs, profileRun, actualRun);
 
             if (isDebug) {
                 //This was removed because it cannot be used. See: 
@@ -667,6 +686,8 @@ public class PythonRunnerConfig {
             cmdArgs.add("-u");
 
             addVmArgs(cmdArgs);
+            addProfileArgs(cmdArgs, profileRun, actualRun);
+
             if (isDebug && isIronpython()) {
                 addIronPythonDebugVmArgs(cmdArgs);
             }
@@ -735,10 +756,27 @@ public class PythonRunnerConfig {
         cmdArgs.toArray(retVal);
 
         if (actualRun) {
-            PythonRunnerCallbacks.onCreatedCommandLine.call(new CreatedCommandLineParams(retVal, coverageRun));
+            CreatedCommandLineParams createdCommandLineParams = new CreatedCommandLineParams(retVal, coverageRun);
+            //Provide a way for clients to alter the command line.
+            List<Object> participants = ExtensionHelper.getParticipants(ExtensionHelper.PYDEV_COMMAND_LINE_PARTICIPANT);
+            for (Object object : participants) {
+                try {
+                    IPyCommandLineParticipant c = (IPyCommandLineParticipant) object;
+                    createdCommandLineParams = c.updateCommandLine(createdCommandLineParams);
+                } catch (Exception e) {
+                    Log.log(e);
+                }
+            }
+
+            retVal = createdCommandLineParams.cmdLine;
+            PythonRunnerCallbacks.onCreatedCommandLine.call(createdCommandLineParams);
         }
 
         return retVal;
+    }
+
+    private void addProfileArgs(List<String> cmdArgs, boolean profileRun, boolean actualRun) {
+        PyProfilePreferences.addProfileArgs(cmdArgs, profileRun, actualRun);
     }
 
     private void addIronPythonDebugVmArgs(List<String> cmdArgs) {
@@ -860,7 +898,8 @@ public class PythonRunnerConfig {
             }
 
             //Last thing: nose parameters or parameters the user configured.
-            for (String s : parseStringIntoList(PyUnitPrefsPage2.getTestRunnerParameters(this.configuration))) {
+            for (String s : parseStringIntoList(PyUnitPrefsPage2.getTestRunnerParameters(this.configuration,
+                    this.project))) {
                 cmdArgs.add(s);
             }
         }
@@ -872,6 +911,11 @@ public class PythonRunnerConfig {
     private void addDebugArgs(List<String> cmdArgs, String vmType, boolean actualRun) throws CoreException {
         if (isDebug) {
             cmdArgs.add(getDebugScript());
+            if (DebugPrefsPage.getDebugMultiprocessingEnabled()) {
+                cmdArgs.add("--multiprocess");
+            }
+
+            cmdArgs.add("--print-in-debugger-startup");
             cmdArgs.add("--vm_type");
             cmdArgs.add(vmType);
             cmdArgs.add("--client");

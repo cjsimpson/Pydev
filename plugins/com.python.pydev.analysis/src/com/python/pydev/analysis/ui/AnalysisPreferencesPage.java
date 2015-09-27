@@ -10,11 +10,9 @@
 package com.python.pydev.analysis.ui;
 
 import org.eclipse.core.resources.IMarker;
+import org.eclipse.core.runtime.IAdaptable;
 import org.eclipse.jface.preference.BooleanFieldEditor;
-import org.eclipse.jface.preference.FieldEditorPreferencePage;
-import org.eclipse.jface.preference.FileFieldEditor;
 import org.eclipse.jface.preference.IPreferenceStore;
-import org.eclipse.jface.preference.RadioGroupFieldEditor;
 import org.eclipse.jface.preference.StringFieldEditor;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionEvent;
@@ -25,22 +23,30 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Link;
 import org.eclipse.swt.widgets.TabFolder;
 import org.eclipse.swt.widgets.TabItem;
-import org.eclipse.swt.widgets.Text;
 import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchPreferencePage;
 import org.python.pydev.debug.ui.launching.PythonRunnerConfig;
+import org.python.pydev.shared_ui.field_editors.LabelFieldEditor;
 import org.python.pydev.shared_ui.field_editors.LinkFieldEditor;
-import org.python.pydev.utils.LabelFieldEditor;
+import org.python.pydev.shared_ui.field_editors.RadioGroupFieldEditor;
+import org.python.pydev.shared_ui.field_editors.ScopedFieldEditorPreferencePage;
+import org.python.pydev.shared_ui.field_editors.ScopedPreferencesFieldEditor;
 
 import com.python.pydev.analysis.AnalysisPlugin;
 import com.python.pydev.analysis.AnalysisPreferenceInitializer;
 import com.python.pydev.analysis.IAnalysisPreferences;
+import com.python.pydev.analysis.PyAnalysisScopedPreferences;
 
-public class AnalysisPreferencesPage extends FieldEditorPreferencePage implements IWorkbenchPreferencePage {
+public class AnalysisPreferencesPage extends ScopedFieldEditorPreferencePage implements IWorkbenchPreferencePage {
 
     public static final String USE_PEP8_CONSOLE = "USE_PEP8_CONSOLE";
-    public static final String PEP8_FILE_LOCATION = "PEP8_FILE_LOCATION";
+    public static final boolean DEFAULT_USE_PEP8_CONSOLE = false;
     public static final String PEP8_COMMAND_LINE = "PEP8_IGNORE_WARNINGS";
+    public static final String PEP8_USE_SYSTEM = "PEP8_USE_SYSTEM";
+    public static final boolean DEFAULT_PEP8_USE_SYSTEM = false;
+
+    //Disabled because we're running in a thread now.
+    public static final boolean SHOW_IN_PEP8_FEATURE_ENABLED = false;
 
     public AnalysisPreferencesPage() {
         super(FLAT);
@@ -55,7 +61,8 @@ public class AnalysisPreferencesPage extends FieldEditorPreferencePage implement
 
     @Override
     public void createFieldEditors() {
-        Composite p = getFieldEditorParent();
+        final Composite initialParent = getFieldEditorParent();
+        Composite p = initialParent;
 
         addField(new LabelFieldEditor(
                 "Analysis_pref_note",
@@ -132,12 +139,23 @@ public class AnalysisPreferencesPage extends FieldEditorPreferencePage implement
                 { "Don't run", String.valueOf(IMarker.SEVERITY_INFO) } };
 
         addField(new RadioGroupFieldEditor(AnalysisPreferenceInitializer.SEVERITY_PEP8, "Pep8", 3, pep8values, p, true) {
+            @Override
             protected void doFillIntoGrid(Composite parent, int numColumns) {
                 super.doFillIntoGrid(parent, 3);
                 adjustForNumColumns(3);
             }
         });
-        addField(new BooleanFieldEditor(USE_PEP8_CONSOLE, "Redirect pep8 output to console?", p) {
+        if (SHOW_IN_PEP8_FEATURE_ENABLED) {
+            addField(new BooleanFieldEditor(USE_PEP8_CONSOLE, "Redirect pep8 output to console?", p) {
+                @Override
+                protected void doFillIntoGrid(Composite parent, int numColumns) {
+                    super.doFillIntoGrid(parent, 3);
+                    adjustForNumColumns(3);
+                }
+            });
+        }
+        addField(new BooleanFieldEditor(PEP8_USE_SYSTEM, "Use system interpreter", p) {
+            @Override
             protected void doFillIntoGrid(Composite parent, int numColumns) {
                 super.doFillIntoGrid(parent, 3);
                 adjustForNumColumns(3);
@@ -156,6 +174,7 @@ public class AnalysisPreferencesPage extends FieldEditorPreferencePage implement
                     }
                 }) {
 
+            @Override
             protected void doFillIntoGrid(Composite parent, int numColumns) {
                 numColumns = 3;
                 Link linkControl = getLinkControl(parent);
@@ -170,32 +189,14 @@ public class AnalysisPreferencesPage extends FieldEditorPreferencePage implement
         });
 
         addField(new StringFieldEditor(PEP8_COMMAND_LINE, "Arguments: ", p) {
+            @Override
             protected void doFillIntoGrid(Composite parent, int numColumns) {
                 super.doFillIntoGrid(parent, 3);
                 adjustForNumColumns(3);
             }
         });
 
-        addField(new FileFieldEditor(PEP8_FILE_LOCATION, "Location of pep8.py", true, p) {
-
-            @Override
-            protected void doFillIntoGrid(Composite parent, int numColumns) {
-                super.doFillIntoGrid(parent, numColumns);
-                Text textField = getTextControl();
-
-                GridData gd = (GridData) textField.getLayoutData();
-                gd.grabExcessHorizontalSpace = true;
-                gd.horizontalAlignment = SWT.FILL;
-                gd.widthHint = 50;
-
-            }
-
-            @Override
-            public int getNumberOfControls() {
-                return 3;
-            }
-        });
-
+        addField(new ScopedPreferencesFieldEditor(initialParent, PyAnalysisScopedPreferences.ANALYSIS_SCOPE, this));
     }
 
     /**
@@ -214,16 +215,22 @@ public class AnalysisPreferencesPage extends FieldEditorPreferencePage implement
     public void init(IWorkbench workbench) {
     }
 
-    public static String getPep8Location() {
-        return AnalysisPlugin.getDefault().getPreferenceStore().getString(PEP8_FILE_LOCATION);
+    public static String[] getPep8CommandLine(IAdaptable projectAdaptable) {
+        return PythonRunnerConfig.parseStringIntoList(getPep8CommandLineAsStr(projectAdaptable));
     }
 
-    public static String[] getPep8CommandLine() {
-        return PythonRunnerConfig.parseStringIntoList(AnalysisPlugin.getDefault().getPreferenceStore()
-                .getString(PEP8_COMMAND_LINE));
+    public static String getPep8CommandLineAsStr(IAdaptable projectAdaptable) {
+        return PyAnalysisScopedPreferences.getString(PEP8_COMMAND_LINE, projectAdaptable);
     }
 
-    public static boolean useConsole() {
-        return AnalysisPlugin.getDefault().getPreferenceStore().getBoolean(USE_PEP8_CONSOLE);
+    public static boolean useConsole(IAdaptable projectAdaptable) {
+        if (SHOW_IN_PEP8_FEATURE_ENABLED) {
+            return PyAnalysisScopedPreferences.getBoolean(USE_PEP8_CONSOLE, projectAdaptable);
+        }
+        return false;
+    }
+
+    public static boolean useSystemInterpreter(IAdaptable projectAdaptable) {
+        return PyAnalysisScopedPreferences.getBoolean(PEP8_USE_SYSTEM, projectAdaptable);
     }
 }

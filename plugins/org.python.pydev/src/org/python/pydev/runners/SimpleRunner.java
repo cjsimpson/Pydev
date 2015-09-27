@@ -34,8 +34,10 @@ import org.python.pydev.core.docutils.StringSubstitution;
 import org.python.pydev.core.log.Log;
 import org.python.pydev.plugin.PydevPlugin;
 import org.python.pydev.shared_core.SharedCorePlugin;
+import org.python.pydev.shared_core.callbacks.ICallback;
 import org.python.pydev.shared_core.io.FileUtils;
 import org.python.pydev.shared_core.process.ProcessUtils;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_core.structure.Tuple;
 import org.python.pydev.shared_core.utils.PlatformUtils;
 
@@ -50,9 +52,9 @@ public class SimpleRunner {
 
     /**
      * THIS CODE IS COPIED FROM org.eclipse.debug.internal.core.LaunchManager
-     * 
+     *
      * changed so that we always set the PYTHONPATH in the environment
-     * 
+     *
      * @return the system environment with the PYTHONPATH env variable added for a given project (if it is null, return it with the
      * default PYTHONPATH added).
      */
@@ -83,7 +85,7 @@ public class SimpleRunner {
 
     /**
      * Same as the getEnvironment, but with a pre-specified pythonpath.
-     * @throws MisconfigurationException 
+     * @throws MisconfigurationException
      */
     public static String[] createEnvWithPythonpath(String pythonPathEnvStr, String interpreter,
             IInterpreterManager manager, IPythonNature nature) throws CoreException, MisconfigurationException {
@@ -119,7 +121,7 @@ public class SimpleRunner {
     }
 
     /**
-     * @return an array with the env variables for the system with the format xx=yy  
+     * @return an array with the env variables for the system with the format xx=yy
      */
     public static String[] getDefaultSystemEnvAsArray(IPythonNature nature) throws CoreException {
         Map<String, String> defaultSystemEnv = getDefaultSystemEnv(nature);
@@ -130,7 +132,7 @@ public class SimpleRunner {
     }
 
     /**
-     * @return a map with the env variables for the system  
+     * @return a map with the env variables for the system
      */
     public static Map<String, String> getDefaultSystemEnv(IPythonNature nature) throws CoreException {
         if (SharedCorePlugin.inTestMode()) {
@@ -142,7 +144,7 @@ public class SimpleRunner {
     }
 
     /**
-     * @return a map with the env variables for the system  
+     * @return a map with the env variables for the system
      */
     @SuppressWarnings("unchecked")
     private static Map<String, String> getDefaultSystemEnv(DebugPlugin defaultPlugin, IPythonNature nature)
@@ -177,6 +179,8 @@ public class SimpleRunner {
 
         //Always remove PYTHONHOME from the default system env, as it doesn't work well with multiple interpreters.
         env.remove("PYTHONHOME");
+        // PyDev-495 Remove VIRTUAL_ENV as it cause IPython to munge the PYTHON_PATH
+        env.remove("VIRTUAL_ENV");
         return env;
     }
 
@@ -190,9 +194,9 @@ public class SimpleRunner {
     }
 
     /**
-     * Creates a string that can be passed as the PYTHONPATH 
-     * 
-     * @param project the project we want to get the settings from. If it is null, the system pythonpath is returned 
+     * Creates a string that can be passed as the PYTHONPATH
+     *
+     * @param project the project we want to get the settings from. If it is null, the system pythonpath is returned
      * @param interpreter this is the interpreter to be used to create the env.
      * @return a string that can be used as the PYTHONPATH env variable
      */
@@ -245,7 +249,7 @@ public class SimpleRunner {
         }
 
         String separator = getPythonPathSeparator();
-        return org.python.pydev.shared_core.string.StringUtils.join(separator, paths);
+        return StringUtils.join(separator, paths);
     }
 
     /**
@@ -265,22 +269,19 @@ public class SimpleRunner {
      * @param env a map that will have its values formatted to xx=yy, so that it can be passed in an exec
      * @return an array with the formatted map
      */
-    private static String[] getMapEnvAsArray(Map<String, String> env) {
-        List<String> strings = new ArrayList<String>(env.size());
-        for (Iterator<Map.Entry<String, String>> iter = env.entrySet().iterator(); iter.hasNext();) {
-            Map.Entry<String, String> entry = iter.next();
-            StringBuffer buffer = new StringBuffer(entry.getKey());
-            buffer.append('=').append(entry.getValue());
-            strings.add(buffer.toString());
-        }
+    public static String[] getMapEnvAsArray(Map<String, String> env) {
+        return ProcessUtils.getMapEnvAsArray(env);
+    }
 
-        return strings.toArray(new String[strings.size()]);
+    public Tuple<Process, String> run(String[] cmdarray, File workingDir, IPythonNature nature, IProgressMonitor monitor) {
+        return run(cmdarray, workingDir, nature, monitor, null);
     }
 
     /**
      * @return a tuple with the process created and a string representation of the cmdarray.
      */
-    public Tuple<Process, String> run(String[] cmdarray, File workingDir, IPythonNature nature, IProgressMonitor monitor) {
+    public Tuple<Process, String> run(String[] cmdarray, File workingDir, IPythonNature nature,
+            IProgressMonitor monitor, ICallback<String[], String[]> updateEnv) {
         if (monitor == null) {
             monitor = new NullProgressMonitor();
         }
@@ -298,9 +299,12 @@ public class SimpleRunner {
             monitor.setTaskName("Making exec..." + executionString);
             if (workingDir != null) {
                 if (!workingDir.isDirectory()) {
-                    throw new RuntimeException(org.python.pydev.shared_core.string.StringUtils.format(
+                    throw new RuntimeException(StringUtils.format(
                             "Working dir must be an existing directory (received: %s)", workingDir));
                 }
+            }
+            if (updateEnv != null) {
+                envp = updateEnv.call(envp);
             }
             process = createProcess(cmdarray, envp, workingDir);
         } catch (Exception e) {
@@ -311,12 +315,12 @@ public class SimpleRunner {
 
     /**
      * Runs the given command line and returns a tuple with the output (stdout and stderr) of executing it.
-     * 
+     *
      * @param cmdarray array with the commands to be passed to Runtime.exec
      * @param workingDir the working dir (may be null)
      * @param project the project (used to get the pythonpath and put it into the environment) -- if null, no environment is passed.
      * @param monitor the progress monitor to be used -- may be null
-     * 
+     *
      * @return a tuple with stdout and stderr
      */
     public Tuple<String, String> runAndGetOutput(String[] cmdarray, File workingDir, IPythonNature nature,
@@ -338,7 +342,7 @@ public class SimpleRunner {
     }
 
     /**
-     * @param pythonpath the pythonpath string to be used 
+     * @param pythonpath the pythonpath string to be used
      * @return a list of strings with the elements of the pythonpath
      */
     public static List<String> splitPythonpath(String pythonpath) {

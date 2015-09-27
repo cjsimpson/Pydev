@@ -12,13 +12,13 @@ package org.python.pydev.debug.model.remote;
 
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IStatus;
-import org.python.pydev.core.docutils.StringUtils;
 import org.python.pydev.debug.core.PydevDebugPlugin;
 import org.python.pydev.debug.model.AbstractDebugTarget;
+import org.python.pydev.shared_core.string.StringUtils;
 
 /**
  * GetVariable network command.
- * 
+ *
  * GetVariable gets the value of the variable from network as XML.
  * The caller can busy-wait for the response.
  */
@@ -39,28 +39,32 @@ public class EvaluateExpressionCommand extends AbstractDebuggerCommand {
         this.expression = StringUtils.removeNewLineChars(expression);
     }
 
+    @Override
     public String getOutgoing() {
         int cmd = CMD_EVALUATE_EXPRESSION;
         if (doExec) {
             cmd = CMD_EXEC_EXPRESSION;
         }
-        return makeCommand(cmd, sequence, locator + "\t" + expression);
+        return makeCommand(cmd, sequence, locator + "\t" + expression + "\t1"); //\t1 == trim result to max size (could be an option)
     }
 
+    @Override
     public boolean needResponse() {
         return true;
     }
 
+    @Override
     public void processOKResponse(int cmdCode, String payload) {
         responseCode = cmdCode;
-        if (cmdCode == CMD_EVALUATE_EXPRESSION || cmdCode == CMD_EXEC_EXPRESSION)
+        if (cmdCode == CMD_EVALUATE_EXPRESSION || cmdCode == CMD_EXEC_EXPRESSION) {
             this.payload = payload;
-        else {
+        } else {
             isError = true;
             PydevDebugPlugin.log(IStatus.ERROR, "Unexpected response to EvaluateExpressionCommand", null);
         }
     }
 
+    @Override
     public void processErrorResponse(int cmdCode, String payload) {
         responseCode = cmdCode;
         this.payload = payload;
@@ -68,9 +72,10 @@ public class EvaluateExpressionCommand extends AbstractDebuggerCommand {
     }
 
     public String getResponse() throws CoreException {
-        if (isError)
+        if (isError) {
             throw new CoreException(PydevDebugPlugin.makeStatus(IStatus.ERROR, "pydevd error:" + payload, null));
-        else
+        } else {
             return payload;
+        }
     }
 }

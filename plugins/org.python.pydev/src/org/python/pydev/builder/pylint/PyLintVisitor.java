@@ -198,7 +198,7 @@ public class PyLintVisitor extends PyDevBuilderVisitor {
                 cmdList.add(script);
             }
             //user args
-            String userArgs = org.python.pydev.shared_core.string.StringUtils.replaceNewLines(
+            String userArgs = StringUtils.replaceNewLines(
                     PyLintPrefPage.getPyLintArgs(), " ");
             StringTokenizer tokenizer2 = new StringTokenizer(userArgs);
             while (tokenizer2.hasMoreTokens()) {
@@ -229,7 +229,7 @@ public class PyLintVisitor extends PyDevBuilderVisitor {
                 // run executable command (pylint or pylint.bat or pylint.exe)
                 write("PyLint: Executing command line:", out, (Object) cmdArray);
                 outTup = new SimpleRunner().runAndGetOutput(
-                        cmdArray, workingDir, null, null, null);
+                        cmdArray, workingDir, PythonNature.getPythonNature(project), null, null);
             }
             String output = outTup.o1;
             String errors = outTup.o2;

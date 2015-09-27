@@ -7,6 +7,9 @@
 package org.python.pydev.editor.refactoring;
 
 import java.io.File;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Stack;
 
 import org.eclipse.core.resources.IFile;
@@ -18,6 +21,7 @@ import org.eclipse.jface.text.IDocumentExtension4;
 import org.python.pydev.core.IModule;
 import org.python.pydev.core.IPythonNature;
 import org.python.pydev.core.MisconfigurationException;
+import org.python.pydev.core.ModulesKey;
 import org.python.pydev.core.docutils.PySelection;
 import org.python.pydev.core.structure.DecoratableObject;
 import org.python.pydev.editor.PyEdit;
@@ -25,22 +29,40 @@ import org.python.pydev.editor.codecompletion.revisited.modules.AbstractModule;
 import org.python.pydev.editor.codecompletion.revisited.modules.SourceModule;
 import org.python.pydev.parser.jython.SimpleNode;
 import org.python.pydev.plugin.PydevPlugin;
-import org.python.pydev.plugin.nature.PythonNature;
 import org.python.pydev.shared_core.structure.Tuple;
 
 /**
  * This class encapsulates all the info needed in order to do a refactoring
  * As we'd have a getter/setter without any side-effects, let's leave them all public...
- * 
+ *
  * It is a Decoratable Object, so that clients can add additional information to this
  * object at runtime.
  */
 public class RefactoringRequest extends DecoratableObject {
 
+    public static final String FIND_REFERENCES_ONLY_IN_LOCAL_SCOPE = "findReferencesOnlyOnLocalScope";
+
+    public static final String FIND_DEFINITION_IN_ADDITIONAL_INFO = "findDefinitionInAdditionalInfo";
+
+    /**
+     * Flag used when renaming modules. If set and True, we won't do a refactoring rename and will
+     * only really change the resource name.
+     */
+    public static final String SIMPLE_RESOURCE_RENAME = "simpleResourceRename";
+
     /**
      * The file associated with the editor where the refactoring is being requested
      */
     public final File file;
+
+    /**
+     * Only available on module renames.
+     */
+    private IFile iFileResource;
+
+    public IFile getIFileResource() {
+        return iFileResource;
+    }
 
     /**
      * The current selection when the refactoring was requested
@@ -50,13 +72,13 @@ public class RefactoringRequest extends DecoratableObject {
     /**
      * The progress monitor to give feedback to the user (may be checked in another thread)
      * May be null
-     * 
+     *
      * Note that this is the monitor for the initial request, but, clients may use it in othe
      */
     private final Stack<IProgressMonitor> monitors = new Stack<IProgressMonitor>();
 
     /**
-     * The nature used 
+     * The nature used
      */
     public IPythonNature nature;
 
@@ -89,21 +111,21 @@ public class RefactoringRequest extends DecoratableObject {
      * If the file is passed, we also set the document automatically
      * @param file the file correspondent to this request
      */
-    public RefactoringRequest(File file, PySelection selection, PythonNature nature) {
+    public RefactoringRequest(File file, PySelection selection, IPythonNature nature) {
         this(file, selection, null, nature, null);
     }
 
     /**
      * If the file is passed, we also set the document automatically
      * @param file the file correspondent to this request
-     * @throws MisconfigurationException 
+     * @throws MisconfigurationException
      */
     public RefactoringRequest(PyEdit pyEdit, PySelection ps) throws MisconfigurationException {
         this(pyEdit.getEditorFile(), ps, null, pyEdit.getPythonNature(), pyEdit);
     }
 
     /**
-     * Assigns parameters to attributes (tries to resolve the module name and create a SystemPythonNature if the 
+     * Assigns parameters to attributes (tries to resolve the module name and create a SystemPythonNature if the
      * nature is not specified)
      */
     public RefactoringRequest(File file, PySelection ps, IProgressMonitor monitor, IPythonNature nature, PyEdit pyEdit) {
@@ -127,6 +149,10 @@ public class RefactoringRequest extends DecoratableObject {
         }
 
         this.pyEdit = pyEdit;
+    }
+
+    public File getFile() {
+        return file;
     }
 
     /**
@@ -277,10 +303,10 @@ public class RefactoringRequest extends DecoratableObject {
 
     /**
      * Clients using the RefactoringRequest are expected to receive it as a parameter, then:
-     * 
+     *
      * getMonitor().beginTask("my task", total)
-     * 
-     * 
+     *
+     *
      * try{
      *     //Calling another function
      *     req.pushMonitor(new SubProgressMonitor(monitor, 10));
@@ -288,7 +314,7 @@ public class RefactoringRequest extends DecoratableObject {
      * finally{
      *     req.popMonitor().done();
      * }
-     * 
+     *
      * try{
      *     //Calling another function
      *     req.pushMonitor(new SubProgressMonitor(monitor, 90));
@@ -296,15 +322,15 @@ public class RefactoringRequest extends DecoratableObject {
      * finally{
      *     req.popMonitor().done();
      * }
-     * 
-     * 
+     *
+     *
      * getMonitor().done();
-     * 
-     * 
-     * 
-     * 
-     * 
-     * @return the current progress monitor 
+     *
+     *
+     *
+     *
+     *
+     * @return the current progress monitor
      */
     public IProgressMonitor getMonitor() {
         return this.monitors.peek();
@@ -315,6 +341,41 @@ public class RefactoringRequest extends DecoratableObject {
             return null;
         }
         return this.pyEdit.getIFile();
+    }
+
+    public boolean isModuleRenameRefactoringRequest() {
+        return false;
+    }
+
+    public IPythonNature getTargetNature() {
+        return this.nature;
+    }
+
+    private Map<String, List<Tuple<List<ModulesKey>, IPythonNature>>> tokenToLastReferences = new HashMap<>();
+
+    public List<Tuple<List<ModulesKey>, IPythonNature>> getPossibleReferences(String initialName) {
+        return tokenToLastReferences.get(initialName);
+    }
+
+    public void setPossibleReferences(String initialName, List<Tuple<List<ModulesKey>, IPythonNature>> ret) {
+        tokenToLastReferences.put(initialName, ret);
+    }
+
+    public void setUpdateReferences(boolean updateReferences) {
+        setAdditionalInfo(FIND_REFERENCES_ONLY_IN_LOCAL_SCOPE, !updateReferences);
+    }
+
+    public void setSimpleResourceRename(boolean simpleResourceRename) {
+        setAdditionalInfo(SIMPLE_RESOURCE_RENAME, simpleResourceRename);
+    }
+
+    public boolean getSimpleResourceRename() {
+        return (boolean) getAdditionalInfo(SIMPLE_RESOURCE_RENAME, false);
+    }
+
+    public void setFileResource(IFile file2) {
+        this.iFileResource = file2;
+
     }
 
 }

@@ -17,6 +17,8 @@ import org.eclipse.jface.dialogs.MessageDialog;
 import org.python.pydev.core.IPythonNature;
 import org.python.pydev.core.IPythonPathNature;
 import org.python.pydev.core.log.Log;
+import org.python.pydev.debug.core.PydevDebugPlugin;
+import org.python.pydev.debug.newconsole.PydevConsoleConstants;
 import org.python.pydev.debug.newconsole.PydevConsoleFactory;
 import org.python.pydev.debug.newconsole.PydevConsoleInterpreter;
 import org.python.pydev.debug.newconsole.env.PydevIProcessFactory;
@@ -25,9 +27,9 @@ import org.python.pydev.django.launching.DjangoConstants;
 import org.python.pydev.plugin.nature.PythonNature;
 import org.python.pydev.shared_ui.EditorUtils;
 
-
 public class DjangoShell extends DjangoAction {
 
+    @Override
     public void run(IAction action) {
         try {
             //   		 this.launchDjangoCommand("shell", false);
@@ -96,13 +98,17 @@ public class DjangoShell extends DjangoAction {
                     nature.getPythonPathNature().getCompleteProjectPythonPath(nature.getProjectInterpreter(),
                             nature.getRelatedInterpreterManager()), nature, natures);
 
-            PydevConsoleInterpreter interpreter = PydevConsoleFactory.createPydevInterpreter(launchInfo, natures);
+            PydevConsoleInterpreter interpreter = PydevConsoleFactory.createPydevInterpreter(launchInfo, natures,
+                    launchInfo.encoding);
 
-            String importStr = "";//"from " + selectedProject.getName() + " import settings;";
-            importStr = "import " + settingsModule + " as settings;";
+            String djangoAdditionalCommands = PydevDebugPlugin.getDefault().getPreferenceStore().
+                    getString(PydevConsoleConstants.DJANGO_INTERPRETER_CMDS);
 
-            consoleFactory.createConsole(interpreter, "\nfrom django.core import management;" + importStr
-                    + "management.setup_environ(settings)\n");
+            djangoAdditionalCommands = djangoAdditionalCommands.replace("${"
+                    + DjangoConstants.DJANGO_SETTINGS_MODULE + "}", settingsModule);
+
+            //os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fooproject.settings")
+            consoleFactory.createConsole(interpreter, djangoAdditionalCommands);
 
         } catch (Exception e) {
             throw new RuntimeException(e);

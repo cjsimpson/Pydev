@@ -10,12 +10,11 @@ import java.util.Iterator;
 import java.util.List;
 
 import org.eclipse.jface.text.IDocument;
-import org.eclipse.jface.text.ITextViewer;
 import org.eclipse.jface.text.contentassist.ICompletionProposal;
 import org.eclipse.jface.text.contentassist.IContextInformation;
+import org.python.pydev.core.ICodeCompletionASTManager.ImportInfo;
 import org.python.pydev.core.ICompletionState;
 import org.python.pydev.core.IToken;
-import org.python.pydev.core.ICodeCompletionASTManager.ImportInfo;
 import org.python.pydev.core.docutils.ImportsSelection;
 import org.python.pydev.editor.codecompletion.revisited.AbstractToken;
 import org.python.pydev.shared_core.string.FastStringBuffer;
@@ -40,7 +39,7 @@ public abstract class AbstractPyCodeCompletion implements IPyCodeCompletion {
      * tokens to actual completions as requested by the Eclipse infrastructure.
      * @param lookingForInstance if looking for instance, we should not add the 'self' as parameter.
      */
-    protected void changeItokenToCompletionPropostal(ITextViewer viewer, CompletionRequest request,
+    protected void changeItokenToCompletionPropostal(CompletionRequest request,
             List<ICompletionProposal> convertedProposals, List<Object> iTokenList, boolean importsTip,
             ICompletionState state) {
 
@@ -65,7 +64,12 @@ public abstract class AbstractPyCodeCompletion implements IPyCodeCompletion {
             }
         }
 
+        int i = 0;
         for (Iterator<Object> iter = iTokenList.iterator(); iter.hasNext();) {
+            i++;
+            if (i > 10000) {
+                break;
+            }
 
             Object obj = iter.next();
 
@@ -164,7 +168,7 @@ public abstract class AbstractPyCodeCompletion implements IPyCodeCompletion {
 
     /**
      * Converts the arguments received to arguments to be added to the document. See tests for examples.
-     * 
+     *
      * result and temp are the buffers that are used in this function to build the arguments. They are cleared
      * before use (this is an optimization so that we don't need to recreate them at each time here as it's
      * called within a loop).
@@ -228,7 +232,7 @@ public abstract class AbstractPyCodeCompletion implements IPyCodeCompletion {
 
     /**
      * @return a string with the arguments to be shown for the given element.
-     * 
+     *
      * E.g.: >>(self, a, b)<< Returns (a, b)
      */
     public static String getArgs(String argsReceived, int type, int lookingFor) {

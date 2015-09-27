@@ -23,9 +23,11 @@ import org.apache.xmlrpc.server.XmlRpcNoSuchHandlerException;
 import org.apache.xmlrpc.server.XmlRpcServer;
 import org.apache.xmlrpc.webserver.WebServer;
 import org.python.pydev.core.TestDependent;
+import org.python.pydev.shared_core.SharedCorePlugin;
 import org.python.pydev.shared_core.io.FileUtils;
 import org.python.pydev.shared_core.io.ThreadStreamReader;
 import org.python.pydev.shared_core.net.SocketUtil;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_interactive_console.console.IXmlRpcClient;
 import org.python.pydev.shared_interactive_console.console.ScriptXmlRpcClient;
 
@@ -103,20 +105,26 @@ public class XmlRpcTest extends TestCase {
 
     public void testXmlRpcServerPython() throws XmlRpcException, IOException, InterruptedException {
         // XmlRpcTest fails because of "PyDev console: using default backend (IPython not available)."
-        // being printed out. I (Jonah Graham) have some further plans related to this code so 
+        // being printed out. I (Jonah Graham) have some further plans related to this code so
         // plan on deferring a fix for this for now.
-        fail("Known failure.");
+        if (SharedCorePlugin.skipKnownFailures()) {
+            return;
+        }
+
         checkServer(true);
     }
 
     public void testXmlRpcServerJython() throws XmlRpcException, IOException, InterruptedException {
         // XmlRpcTest fails because of "PyDev console: using default backend (IPython not available)."
-        // being printed out. I (Jonah Graham) have some further plans related to this code so 
+        // being printed out. I (Jonah Graham) have some further plans related to this code so
         // plan on deferring a fix for this for now.
         // In addition, the start-up delay for Jython is sometimes insufficient (i.e. when on a VM
         // like on travis) leading to a transient failure. It would be better to do something
         // like the "hello" in PydevConsoleCommunication with a long worst-case timeout
-        fail("Known failure.");
+        if (SharedCorePlugin.skipKnownFailures()) {
+            return;
+        }
+
         checkServer(false);
     }
 
@@ -149,18 +157,18 @@ public class XmlRpcTest extends TestCase {
         }
 
         try {
-            IXmlRpcClient client = new ScriptXmlRpcClient(process, err, out);
+            IXmlRpcClient client = new ScriptXmlRpcClient(process);
             client.setPort(port);
 
-            printArr(client.execute("addExec", new Object[] { "abc = 10" }));
-            printArr(client.execute("addExec", new Object[] { "abc" }));
-            printArr(client.execute("addExec", new Object[] { "import sys" }));
-            printArr(client.execute("addExec", new Object[] { "class Foo:" }));
-            printArr(client.execute("addExec", new Object[] { "    print 20" }));
-            printArr(client.execute("addExec", new Object[] { "    print >> sys.stderr, 30" }));
-            printArr(client.execute("addExec", new Object[] { "" }));
-            printArr(client.execute("addExec", new Object[] { "foo=Foo()" }));
-            printArr(client.execute("addExec", new Object[] { "foo.__doc__=None" }));
+            printArr(client.execute("execLine", new Object[] { "abc = 10" }));
+            printArr(client.execute("execLine", new Object[] { "abc" }));
+            printArr(client.execute("execLine", new Object[] { "import sys" }));
+            printArr(client.execute("execLine", new Object[] { "class Foo:" }));
+            printArr(client.execute("execLine", new Object[] { "    print 20" }));
+            printArr(client.execute("execLine", new Object[] { "    print >> sys.stderr, 30" }));
+            printArr(client.execute("execLine", new Object[] { "" }));
+            printArr(client.execute("execLine", new Object[] { "foo=Foo()" }));
+            printArr(client.execute("execLine", new Object[] { "foo.__doc__=None" }));
             printArr("start get completions");
             Object[] completions = (Object[]) client.execute("getCompletions", new Object[] { "fo" });
             //the completions may come in any order, we must sort it for the test and remove things we don't expect.
@@ -183,11 +191,11 @@ public class XmlRpcTest extends TestCase {
             printArr("end get completions");
 
             printArr("start raw_input");
-            printArr(client.execute("addExec", new Object[] { "raw_input()" }));
+            printArr(client.execute("execLine", new Object[] { "raw_input()" }));
             printArr("finish raw_input");
-            printArr(client.execute("addExec", new Object[] { "'foo'" }));
+            printArr(client.execute("execLine", new Object[] { "'foo'" }));
             //            System.out.println("Ask exit");
-            printArr(client.execute("addExec", new Object[] { "sys.exit(0)" }));
+            printArr(client.execute("execLine", new Object[] { "sys.exit(0)" }));
             //            System.out.println("End Ask exit");
         } finally {
             if (process != null) {
@@ -239,7 +247,8 @@ public class XmlRpcTest extends TestCase {
                             return;
                         }
                     }
-                    String errorMessage = org.python.pydev.shared_core.string.StringUtils.format("Expected: >>%s<< and not: >>%s<< (position:%s)",
+                    String errorMessage = StringUtils.format(
+                            "Expected: >>%s<< and not: >>%s<< (position:%s)",
                             expected, found, next);
                     assertEquals(errorMessage, expected, found);
                 }

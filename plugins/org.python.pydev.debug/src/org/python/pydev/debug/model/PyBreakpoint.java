@@ -34,11 +34,12 @@ import org.python.pydev.parser.jython.SimpleNode;
 import org.python.pydev.parser.visitors.NodeUtils;
 import org.python.pydev.plugin.PydevPlugin;
 import org.python.pydev.plugin.nature.PythonNature;
+import org.python.pydev.shared_core.io.FileUtils;
 import org.python.pydev.shared_core.structure.Tuple;
 
 /**
  * Represents python breakpoint.
- * 
+ *
  */
 public class PyBreakpoint extends LineBreakpoint {
     /**
@@ -46,7 +47,16 @@ public class PyBreakpoint extends LineBreakpoint {
      */
     public static final String PY_BREAK_EXTERNAL_PATH_ID = "org.python.pydev.debug.PYDEV_EXTERNAL_PATH_ID";
 
+    /**
+     * Can be null/not set (which signals python-line) or django-line
+     */
+    public static final String PY_BREAK_TYPE = "org.python.pydev.debug.PY_BREAK_TYPE";
+    public static final String PY_BREAK_TYPE_PYTHON = "python-line";
+    public static final String PY_BREAK_TYPE_DJANGO = "django-line";
+
     static public final String PY_BREAK_MARKER = "org.python.pydev.debug.pyStopBreakpointMarker";
+
+    static public final String DJANGO_BREAK_MARKER = "org.python.pydev.debug.djangoStopBreakpointMarker";
 
     static public final String PY_CONDITIONAL_BREAK_MARKER = "org.python.pydev.debug.pyConditionalStopBreakpointMarker";
 
@@ -63,7 +73,15 @@ public class PyBreakpoint extends LineBreakpoint {
      */
     protected static final String CONDITION_ENABLED = "org.python.pydev.debug.conditionEnabled";
 
+    public static int nextId = 0;
+    public static final Object lock = new Object();
+
+    public final int breakpointId;
+
     public PyBreakpoint() {
+        synchronized (lock) {
+            this.breakpointId = nextId++;
+        }
     }
 
     public String getModelIdentifier() {
@@ -130,6 +148,25 @@ public class PyBreakpoint extends LineBreakpoint {
         return nature;
     }
 
+    public String getType() {
+        IMarker marker = getMarker();
+        Object attribute = null;
+        if (marker != null) {
+            try {
+                attribute = marker.getAttribute(PyBreakpoint.PY_BREAK_TYPE);
+            } catch (CoreException e) {
+                Log.log(e);
+            }
+        }
+        if (attribute != null
+                && (attribute.equals(PyBreakpoint.PY_BREAK_TYPE_DJANGO) || attribute
+                        .equals(PyBreakpoint.PY_BREAK_TYPE_PYTHON))) {
+            return (String) attribute;
+        }
+        //default
+        return PyBreakpoint.PY_BREAK_TYPE_PYTHON;
+    }
+
     public Object getLine() {
         try {
             return getMarker().getAttribute(IMarker.LINE_NUMBER);
@@ -163,11 +200,12 @@ public class PyBreakpoint extends LineBreakpoint {
 
     /**
      * Returns the marker associated with this breakpoint.
-     * 
+     *
      * @return breakpoint marker
-     * @exception DebugException if no marker is associated with 
+     * @exception DebugException if no marker is associated with
      *  this breakpoint or the associated marker does not exist
      */
+    @Override
     protected IMarker ensureMarker() throws DebugException {
         IMarker m = getMarker();
         if (m == null || !m.exists()) {
@@ -182,7 +220,7 @@ public class PyBreakpoint extends LineBreakpoint {
 
     /**
      * @return the function name for this breakpoint.
-     * 
+     *
      * A return of "None" signals that we couldn't discover the function name (so, we should try to match things in the whole
      * file, and not only in the given context, as we don't know which context it is)
      */
@@ -193,7 +231,7 @@ public class PyBreakpoint extends LineBreakpoint {
             return "None";
         }
 
-        if (file.lastModified() == lastModifiedTimeCached) {
+        if (FileUtils.lastModified(file) == lastModifiedTimeCached) {
             return functionName;
         }
 
@@ -226,14 +264,14 @@ public class PyBreakpoint extends LineBreakpoint {
                 } finally {
                     nature.endRequests();
                 }
-                lastModifiedTimeCached = file.lastModified();
+                lastModifiedTimeCached = FileUtils.lastModified(file);
 
                 if (sourceModule == null) {
                     //the text for the breakpoint requires the function name, and it may be requested before
                     //the ast manager is actually restored (so, modName is None, and we have little alternative
                     //but making a parse to get the function name)
                     IDocument doc = getDocument();
-                    sourceModule = (SourceModule) AbstractModule.createModuleFromDoc("", null, doc, nature, true);
+                    sourceModule = AbstractModule.createModuleFromDoc("", null, doc, nature, true);
                 }
 
                 int lineToUse = getLineNumber() - 1;

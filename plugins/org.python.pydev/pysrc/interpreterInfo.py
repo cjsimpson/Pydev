@@ -6,7 +6,7 @@ what is what:
 sys.builtin_module_names: contains the builtin modules embeeded in python (rigth now, we specify all manually).
 sys.prefix: A string giving the site-specific directory prefix where the platform independent Python files are installed
 
-format is something as 
+format is something as
 EXECUTABLE:python.exe|libs@compiled_dlls$builtin_mods
 
 all internal are separated by |
@@ -63,7 +63,10 @@ if sys.platform == "cygwin":
 
         retval = ctypes.create_string_buffer(MAX_PATH)
         path = fullyNormalizePath(path)
-        ctypes.cdll.cygwin1.cygwin_conv_to_win32_path(path, retval)  # @UndefinedVariable
+        path = tobytes(path)
+        CCP_POSIX_TO_WIN_A = 0
+        ctypes.cdll.cygwin1.cygwin_conv_path(CCP_POSIX_TO_WIN_A, path, retval, MAX_PATH)
+        
         return retval.value
 
 else:
@@ -72,10 +75,10 @@ else:
 
 
 
-def getfilesystemencoding():
+def __getfilesystemencoding():
     '''
     Note: there's a copy of this method in _pydev_filesystem_encoding.py
-    ''' 
+    '''
     try:
         ret = sys.getfilesystemencoding()
         if not ret:
@@ -91,31 +94,56 @@ def getfilesystemencoding():
             return 'utf-8'
         except:
             pass
-        
+
         # Only available from 2.3 onwards.
         if sys.platform == 'win32':
             return 'mbcs'
         return 'utf-8'
 
+def getfilesystemencoding():
+    try:
+        ret = __getfilesystemencoding()
+        
+        #Check if the encoding is actually there to be used!
+        if hasattr('', 'encode'):
+            ''.encode(ret)
+        if hasattr('', 'decode'):
+            ''.decode(ret)
+            
+        return ret
+    except:
+        return 'utf-8'
+    
 file_system_encoding = getfilesystemencoding()
+
+if IS_PYTHON_3K:
+    unicode_type = str
+    bytes_type = bytes
+    
+else:
+    unicode_type = unicode
+    bytes_type = str
+    
 
 def tounicode(s):
     if hasattr(s, 'decode'):
-        # Depending on the platform variant we may have decode on string or not.
-        return s.decode(file_system_encoding)
+        if not isinstance(s, unicode_type):
+            # Depending on the platform variant we may have decode on string or not.
+            return s.decode(file_system_encoding)
     return s
 
-def toutf8(s):
+def tobytes(s):
     if hasattr(s, 'encode'):
-        return s.encode('utf-8')
+        if not isinstance(s, bytes_type):
+            return s.encode(file_system_encoding)
     return s
 
 def toasciimxl(s):
     # output for xml without a declared encoding
-    
+
     # As the output is xml, we have to encode chars (< and > are ok as they're not accepted in the filesystem name --
     # if it was allowed, we'd have to do things more selectively so that < and > don't get wrongly replaced).
-    s = s.replace("&", "&amp;") 
+    s = s.replace("&", "&amp;")
 
     try:
         ret = s.encode('ascii', 'xmlcharrefreplace')
@@ -144,12 +172,12 @@ if __name__ == '__main__':
         pass
 
     try:
-        executable = nativePath(sys.executable)
+        executable = tounicode(nativePath(sys.executable))
     except:
-        executable = sys.executable
+        executable = tounicode(sys.executable)
 
-    if sys.platform == "cygwin" and not executable.endswith('.exe'):
-        executable += '.exe'
+    if sys.platform == "cygwin" and not executable.endswith(tounicode('.exe')):
+        executable += tounicode('.exe')
 
 
     try:
@@ -170,7 +198,7 @@ if __name__ == '__main__':
 
     contents.append(tounicode('<executable>%s</executable>') % tounicode(executable))
 
-    # this is the new implementation to get the system folders 
+    # this is the new implementation to get the system folders
     # (still need to check if it works in linux)
     # (previously, we were getting the executable dir, but that is not always correct...)
     prefix = tounicode(nativePath(sys.prefix))
@@ -181,7 +209,7 @@ if __name__ == '__main__':
 
     path_used = sys.path
     try:
-        path_used = path_used[:]  # Use a copy.
+        path_used = path_used[1:]  # Use a copy (and don't include the directory of this script as a path.)
     except:
         pass  # just ignore it...
 

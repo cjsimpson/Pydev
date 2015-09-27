@@ -7,6 +7,7 @@
 package org.python.pydev.overview_ruler;
 
 import org.eclipse.jface.preference.BooleanFieldEditor;
+import org.eclipse.jface.preference.ColorFieldEditor;
 import org.eclipse.jface.preference.FieldEditorPreferencePage;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.jface.preference.IntegerFieldEditor;
@@ -22,9 +23,11 @@ import org.python.pydev.shared_ui.SharedUiPlugin;
 public class MinimapOverviewRulerPreferencesPage extends FieldEditorPreferencePage implements IWorkbenchPreferencePage {
 
     public static final String USE_MINIMAP = "USE_MINIMAP";
-    public static final String SHOW_SCROLLBAR = "SHOW_SCROLLBAR";
+    public static final String SHOW_VERTICAL_SCROLLBAR = "SHOW_VERTICAL_SCROLLBAR";
+    public static final String SHOW_HORIZONTAL_SCROLLBAR = "SHOW_HORIZONTAL_SCROLLBAR";
     public static final String SHOW_MINIMAP_CONTENTS = "SHOW_MINIMAP_CONTENTS";
     public static final String MINIMAP_WIDTH = "MINIMAP_WIDTH";
+    public static final String MINIMAP_SELECTION_COLOR = "MINIMAP_SELECTION_COLOR";
 
     public MinimapOverviewRulerPreferencesPage() {
         super(GRID);
@@ -42,17 +45,25 @@ public class MinimapOverviewRulerPreferencesPage extends FieldEditorPreferencePa
                 "Show minimap? (applied on editor restart)", p);
         addField(useMinimap);
 
-        //        BooleanFieldEditor showScrollbar = new BooleanFieldEditor(SHOW_SCROLLBAR,
-        //                "Show scrollbar? (applied on editor restart)", p);
-        //        addField(showScrollbar);
+        BooleanFieldEditor showScrollbar = new BooleanFieldEditor(SHOW_VERTICAL_SCROLLBAR,
+                "Show vertical scrollbar? (applied on editor restart)", p);
+        addField(showScrollbar);
+
+        BooleanFieldEditor showHorizontalScrollbar = new BooleanFieldEditor(SHOW_HORIZONTAL_SCROLLBAR,
+                "Show horizontal scrollbar? (applied on editor restart)", p);
+        addField(showHorizontalScrollbar);
 
         BooleanFieldEditor showContents = new BooleanFieldEditor(SHOW_MINIMAP_CONTENTS,
-                "Show text in overview ruler? (applied on text change)", p);
+                "Show overview items in overview ruler? (applied on text change)", p);
         addField(showContents);
 
         IntegerFieldEditor minimapWidth = new IntegerFieldEditor(MINIMAP_WIDTH,
                 "Minimap Width: (applied on editor resize)", p);
         addField(minimapWidth);
+
+        ColorFieldEditor selectionColor = new ColorFieldEditor(MINIMAP_SELECTION_COLOR, "Selection color", p);
+        addField(selectionColor);
+
     }
 
     public static boolean useMinimap() {
@@ -63,9 +74,12 @@ public class MinimapOverviewRulerPreferencesPage extends FieldEditorPreferencePa
         return SharedUiPlugin.getDefault().getPreferenceStore().getBoolean(SHOW_MINIMAP_CONTENTS);
     }
 
-    public static boolean getShowScrollbar() {
-        return true;
-        //        return SharedUiPlugin.getDefault().getPreferenceStore().getBoolean(SHOW_SCROLLBAR);
+    public static boolean getShowVerticalScrollbar() {
+        return SharedUiPlugin.getDefault().getPreferenceStore().getBoolean(SHOW_VERTICAL_SCROLLBAR);
+    }
+
+    public static boolean getShowHorizontalScrollbar() {
+        return SharedUiPlugin.getDefault().getPreferenceStore().getBoolean(SHOW_HORIZONTAL_SCROLLBAR);
     }
 
     private final static int MIN = 1;

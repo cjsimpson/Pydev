@@ -30,7 +30,6 @@ import org.python.pydev.shared_core.callbacks.ICallback0;
 import org.python.pydev.shared_ui.utils.PyMarkerUtils;
 import org.python.pydev.shared_ui.utils.PyMarkerUtils.MarkerInfo;
 
-
 /**
  * @author Fabio Zadrozny
  */
@@ -38,7 +37,7 @@ public class PyTodoVisitor extends PyDevBuilderVisitor {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see org.python.pydev.builder.PyDevBuilderVisitor#visitResource(org.eclipse.core.resources.IResource)
      */
     @Override
@@ -73,13 +72,14 @@ public class PyTodoVisitor extends PyDevBuilderVisitor {
     /*default*/List<MarkerInfo> computeTodoMarkers(IDocument document, List<String> todoTags)
             throws BadLocationException {
         List<PyMarkerUtils.MarkerInfo> lst = new ArrayList<PyMarkerUtils.MarkerInfo>();
-        if (todoTags.size() > 0) {
+        if (todoTags.size() > 0 && document != null) {
 
-            ParsingUtils utils = ParsingUtils.create(document);
+            String str = document.get();
+            ParsingUtils utils = ParsingUtils.create(str);
             int len = utils.len();
             try {
                 for (int i = 0; i < len; i++) {
-                    char c = utils.charAt(i);
+                    char c = str.charAt(i);
                     switch (c) {
                         case '\'':
                         case '\"':

@@ -35,7 +35,7 @@ import os
 
 # The following classes and functions are mainly intended to be used from
 # an interactive Python session
-class UserModuleDeleter(object):
+class UserModuleDeleter:
     """
     User Module Deleter (UMD) aims at deleting user modules
     to force Python to deeply reload them during import
@@ -57,10 +57,9 @@ class UserModuleDeleter(object):
         except:
             pass
         self.previous_modules = list(sys.modules.keys())
-        print("previous_modules=", self.previous_modules, type(self.previous_modules))
 
     def is_module_blacklisted(self, modname, modpath):
-        for path in [sys.prefix]+self.pathlist:
+        for path in [sys.prefix] + self.pathlist:
             if modpath.startswith(path):
                 return True
         else:
@@ -92,22 +91,36 @@ class UserModuleDeleter(object):
                     del sys.modules[modname]
         if verbose and log:
             print("\x1b[4;33m%s\x1b[24m%s\x1b[0m" % ("UMD has deleted",
-                                                     ": "+", ".join(log)))
+                                                     ": " + ", ".join(log)))
 
 __umd__ = None
 
-
+_get_globals_callback = None
+def _set_globals_function(get_globals):
+    global _get_globals_callback
+    _get_globals_callback = get_globals
 def _get_globals():
     """Return current Python interpreter globals namespace"""
-    from __main__ import __dict__ as namespace
-    shell = namespace.get('__ipythonshell__')
-    if shell is not None and hasattr(shell, 'user_ns'):
-        # IPython 0.12+ kernel
-        return shell.user_ns
+    if _get_globals_callback is not None:
+        return _get_globals_callback()
     else:
-        # Python interpreter
+        try:
+            from __main__ import __dict__ as namespace
+        except ImportError:
+            try:
+                # The import fails on IronPython
+                import __main__
+                namespace = __main__.__dict__
+            except:
+                namespace
+        shell = namespace.get('__ipythonshell__')
+        if shell is not None and hasattr(shell, 'user_ns'):
+            # IPython 0.12+ kernel
+            return shell.user_ns
+        else:
+            # Python interpreter
+            return namespace
         return namespace
-    return namespace
 
 
 def runfile(filename, args=None, wdir=None, namespace=None):
@@ -135,6 +148,10 @@ def runfile(filename, args=None, wdir=None, namespace=None):
         raise TypeError("expected a character buffer object")
     if namespace is None:
         namespace = _get_globals()
+    if '__file__' in namespace:
+        old_file = namespace['__file__']
+    else:
+        old_file = None
     namespace['__file__'] = filename
     sys.argv = [filename]
     if args is not None:
@@ -149,4 +166,7 @@ def runfile(filename, args=None, wdir=None, namespace=None):
         os.chdir(wdir)
     execfile(filename, namespace)
     sys.argv = ['']
-    namespace.pop('__file__')
+    if old_file is None:
+        del namespace['__file__']
+    else:
+        namespace['__file__'] = old_file

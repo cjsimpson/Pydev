@@ -21,9 +21,10 @@ import org.python.pydev.core.docutils.PySelection;
 import org.python.pydev.editor.codecompletion.revisited.CodeCompletionTestsBase;
 import org.python.pydev.editor.codecompletion.revisited.modules.CompiledModule;
 import org.python.pydev.editor.refactoring.AbstractPyRefactoring;
+import org.python.pydev.editor.refactoring.PyRefactoringRequest;
 import org.python.pydev.editor.refactoring.RefactoringRequest;
+import org.python.pydev.shared_core.string.StringUtils;
 
-import com.python.pydev.refactoring.refactorer.AstEntryRefactorerRequestConstants;
 import com.python.pydev.refactoring.refactorer.Refactorer;
 import com.python.pydev.refactoring.wizards.rename.PyRenameEntryPoint;
 
@@ -31,6 +32,7 @@ public class RefactoringLocalTestBase extends CodeCompletionTestsBase {
 
     protected static boolean DEBUG = false;
 
+    @Override
     public void setUp() throws Exception {
         super.setUp();
         CompiledModule.COMPILED_MODULES_ENABLED = getCompiledModulesEnabled();
@@ -47,6 +49,7 @@ public class RefactoringLocalTestBase extends CodeCompletionTestsBase {
         return false;
     }
 
+    @Override
     public void tearDown() throws Exception {
         CompiledModule.COMPILED_MODULES_ENABLED = true;
         AbstractPyRefactoring.setPyRefactoring(null);
@@ -60,7 +63,7 @@ public class RefactoringLocalTestBase extends CodeCompletionTestsBase {
     /** Applies a rename refactoring 
      */
     protected void applyRenameRefactoring(RefactoringRequest request, boolean expectError) throws CoreException {
-        PyRenameEntryPoint processor = new PyRenameEntryPoint(request);
+        PyRenameEntryPoint processor = new PyRenameEntryPoint(new PyRefactoringRequest(request));
         NullProgressMonitor nullProgressMonitor = new NullProgressMonitor();
         checkStatus(processor.checkInitialConditions(nullProgressMonitor), expectError);
         checkStatus(processor.checkFinalConditions(nullProgressMonitor, null), expectError);
@@ -100,11 +103,12 @@ public class RefactoringLocalTestBase extends CodeCompletionTestsBase {
 
     protected void checkRename(String strDoc, int line, int col, String initialName, boolean expectError,
             boolean onlyOnLocalScope, String newName) throws CoreException {
-        Document doc = new Document(org.python.pydev.shared_core.string.StringUtils.format(strDoc, getSame(initialName)));
+        Document doc = new Document(
+                StringUtils.format(strDoc, getSame(initialName)));
         PySelection ps = new PySelection(doc, line, col);
 
         RefactoringRequest request = new RefactoringRequest(null, ps, nature);
-        request.setAdditionalInfo(AstEntryRefactorerRequestConstants.FIND_REFERENCES_ONLY_IN_LOCAL_SCOPE,
+        request.setAdditionalInfo(RefactoringRequest.FIND_REFERENCES_ONLY_IN_LOCAL_SCOPE,
                 onlyOnLocalScope);
         request.moduleName = "foo";
         request.inputName = newName;
@@ -117,10 +121,11 @@ public class RefactoringLocalTestBase extends CodeCompletionTestsBase {
         }
         if (!expectError) {
             assertEquals(initialName, request.initialName);
-            assertEquals(org.python.pydev.shared_core.string.StringUtils.format(strDoc, getSame("bb")), refactored);
+            assertEquals(StringUtils.format(strDoc, getSame("bb")), refactored);
         } else {
             //cannot have changed
-            assertEquals(org.python.pydev.shared_core.string.StringUtils.format(strDoc, getSame(initialName)), refactored);
+            assertEquals(StringUtils.format(strDoc, getSame(initialName)),
+                    refactored);
         }
     }
 

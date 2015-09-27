@@ -1,3 +1,19 @@
+/******************************************************************************
+* Copyright (C) 2006-2012  IFS Institute for Software and others
+*
+* All rights reserved. This program and the accompanying materials
+* are made available under the terms of the Eclipse Public License v1.0
+* which accompanies this distribution, and is available at
+* http://www.eclipse.org/legal/epl-v10.html
+*
+* Original authors:
+*     Dennis Hunziker
+*     Ueli Kistler
+*     Reto Schuettel
+*     Robin Stocker
+* Contributors:
+*     Fabio Zadrozny <fabiofz@gmail.com> - initial implementation
+******************************************************************************/
 /* 
  * Copyright (C) 2006, 2007  Dennis Hunziker, Ueli Kistler
  * Copyright (C) 2007  Reto Schuettel, Robin Stocker
@@ -6,7 +22,6 @@
 package org.python.pydev.refactoring.coderefactoring.inlinelocal;
 
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.List;
 
 import org.eclipse.core.runtime.CoreException;
@@ -24,6 +39,7 @@ import org.python.pydev.refactoring.core.base.AbstractPythonRefactoring;
 import org.python.pydev.refactoring.core.base.RefactoringInfo;
 import org.python.pydev.refactoring.core.change.IChangeProcessor;
 import org.python.pydev.refactoring.messages.Messages;
+import org.python.pydev.shared_core.structure.LinkedListWarningOnSlowOperations;
 
 public class InlineLocalRefactoring extends AbstractPythonRefactoring {
     private InlineLocalRequestProcessor requestProcessor;
@@ -141,7 +157,7 @@ public class InlineLocalRefactoring extends AbstractPythonRefactoring {
     }
 
     private List<Name> findAllRelatedVariables(List<Name> variables, Name selectedVariable) {
-        List<Name> relatedVariables = new LinkedList<Name>();
+        List<Name> relatedVariables = new LinkedListWarningOnSlowOperations<Name>();
 
         for (Name variable : variables) {
             if (variable.id.equals(selectedVariable.id)) {

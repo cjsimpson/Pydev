@@ -28,6 +28,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.SortedMap;
 
+import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.jface.text.IDocument;
 import org.python.pydev.core.FileUtilsFileBuffer;
@@ -35,8 +36,7 @@ import org.python.pydev.core.FullRepIterable;
 import org.python.pydev.core.MisconfigurationException;
 import org.python.pydev.core.ModulesKey;
 import org.python.pydev.core.ModulesKeyForZip;
-import org.python.pydev.core.ObjectsPool;
-import org.python.pydev.core.docutils.StringUtils;
+import org.python.pydev.core.ObjectsInternPool;
 import org.python.pydev.core.log.Log;
 import org.python.pydev.editor.codecompletion.revisited.PyPublicTreeMap;
 import org.python.pydev.logging.DebugSettings;
@@ -49,6 +49,7 @@ import org.python.pydev.parser.visitors.NodeUtils;
 import org.python.pydev.parser.visitors.scope.ASTEntry;
 import org.python.pydev.parser.visitors.scope.DefinitionsASTIteratorVisitor;
 import org.python.pydev.shared_core.string.FastStringBuffer;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_core.structure.FastStack;
 import org.python.pydev.shared_core.structure.Tuple;
 import org.python.pydev.shared_core.structure.Tuple3;
@@ -56,30 +57,30 @@ import org.python.pydev.shared_core.structure.Tuple3;
 /**
  * This class contains additional information on an interpreter, so that we are able to make code-completion in
  * a context-insensitive way (and make additionally auto-import).
- * 
+ *
  * The information that is needed for that is the following:
- * 
+ *
  * - Classes that are available in the global context
  * - Methods that are available in the global context
- * 
+ *
  * We must access this information very fast, so the underlying structure has to take that into consideration.
- * 
+ *
  * It should not 'eat' too much memory because it should be all in memory at all times
- * 
- * It should also be easy to query it. 
- *      Some query situations include: 
+ *
+ * It should also be easy to query it.
+ *      Some query situations include:
  *          - which classes have the method xxx and yyy?
  *          - which methods and classes start with xxx?
  *          - is there any class or method with the name xxx?
- *      
+ *
  * The information must be persisted for reuse (and persisting and restoring it should be fast).
- * 
+ *
  * We need to store information for any interpreter, be it python, jython...
- * 
+ *
  * For creating and keeping this information up-to-date, we have to know when:
  * - the interpreter used changes (the InterpreterInfo should be passed after the change)
  * - some file changes (pydev_builder)
- * 
+ *
  * @author Fabio
  */
 public abstract class AbstractAdditionalTokensInfo {
@@ -107,20 +108,20 @@ public abstract class AbstractAdditionalTokensInfo {
     /**
      * indexes used so that we can access the information faster - it is ordered through a tree map, and should be
      * very fast to access given its initials.
-     * 
+     *
      * It contains only top/level information for a module
-     * 
+     *
      * This map is persisted.
      */
     protected SortedMap<String, Set<IInfo>> topLevelInitialsToInfo = new PyPublicTreeMap<String, Set<IInfo>>();
 
     /**
-     * indexes so that we can get 'inner information' from classes, such as methods or inner classes from a class 
+     * indexes so that we can get 'inner information' from classes, such as methods or inner classes from a class
      */
     protected SortedMap<String, Set<IInfo>> innerInitialsToInfo = new PyPublicTreeMap<String, Set<IInfo>>();
 
     /**
-     * Should be used before re-creating the info, so that we have enough memory. 
+     * Should be used before re-creating the info, so that we have enough memory.
      */
     public void clearAllInfo() {
         synchronized (lock) {
@@ -176,14 +177,14 @@ public abstract class AbstractAdditionalTokensInfo {
      * 2: because we've removed some info (the hash is no longer saved)
      * 3: Changed from string-> list to string->set
      */
-    protected static final int version = 3;
+    protected static final int version = 4;
 
     public AbstractAdditionalTokensInfo() {
     }
 
     /**
      * That's the function actually used to add some info
-     * 
+     *
      * @param info information to be added
      */
     protected void add(IInfo info, int doOn) {
@@ -249,16 +250,16 @@ public abstract class AbstractAdditionalTokensInfo {
                 if (parts.get(0).equals("self")) {
                     rep = parts.get(1);
                     //no intern construct (locked in the loop that calls this method)
-                    AttrInfo info = new AttrInfo(ObjectsPool.internUnsynched(rep), moduleName,
-                            ObjectsPool.internUnsynched(path), false);
+                    AttrInfo info = new AttrInfo(ObjectsInternPool.internUnsynched(rep), moduleName,
+                            ObjectsInternPool.internUnsynched(path), false);
                     add(info, doOn);
                     return info;
                 }
             }
         } else {
             //no intern construct (locked in the loop that calls this method)
-            AttrInfo info = new AttrInfo(ObjectsPool.internUnsynched(FullRepIterable.getFirstPart(rep)), moduleName,
-                    ObjectsPool.internUnsynched(path), false);
+            AttrInfo info = new AttrInfo(ObjectsInternPool.internUnsynched(FullRepIterable.getFirstPart(rep)), moduleName,
+                    ObjectsInternPool.internUnsynched(path), false);
             add(info, doOn);
             return info;
         }
@@ -274,7 +275,8 @@ public abstract class AbstractAdditionalTokensInfo {
 
         Object doc;
         if (isZipModule) {
-            doc = FileUtilsFileBuffer.getCustomReturnFromZip(modulesKeyForZip.file, modulesKeyForZip.zipModulePath, null);
+            doc = FileUtilsFileBuffer.getCustomReturnFromZip(modulesKeyForZip.file, modulesKeyForZip.zipModulePath,
+                    null);
 
         } else {
             doc = FileUtilsFileBuffer.getCustomReturnFromFile(key.file, true, null);
@@ -316,7 +318,7 @@ public abstract class AbstractAdditionalTokensInfo {
 
     /**
      * Adds ast info information for a module.
-     * 
+     *
      * @param m the module we want to add to the info
      */
     public List<IInfo> addAstInfo(SimpleNode node, ModulesKey key, boolean generateDelta) {
@@ -336,8 +338,8 @@ public abstract class AbstractAdditionalTokensInfo {
                 FastStack<SimpleNode> tempStack = new FastStack<SimpleNode>(10);
 
                 synchronized (this.lock) {
-                    synchronized (ObjectsPool.lock) {
-                        key.name = ObjectsPool.internUnsynched(key.name);
+                    synchronized (ObjectsInternPool.lock) {
+                        key.name = ObjectsInternPool.internUnsynched(key.name);
 
                         while (entries.hasNext()) {
                             ASTEntry entry = entries.next();
@@ -347,7 +349,7 @@ public abstract class AbstractAdditionalTokensInfo {
                                 if (entry.node instanceof ClassDef) {
                                     //no intern construct (locked in this loop)
                                     ClassInfo info = new ClassInfo(
-                                            ObjectsPool.internUnsynched(((NameTok) ((ClassDef) entry.node).name).id),
+                                            ObjectsInternPool.internUnsynched(((NameTok) ((ClassDef) entry.node).name).id),
                                             key.name, null, false);
                                     add(info, TOP_LEVEL);
                                     infoCreated = info;
@@ -355,7 +357,7 @@ public abstract class AbstractAdditionalTokensInfo {
                                 } else if (entry.node instanceof FunctionDef) {
                                     //no intern construct (locked in this loop)
                                     FuncInfo info2 = new FuncInfo(
-                                            ObjectsPool.internUnsynched(((NameTok) ((FunctionDef) entry.node).name).id),
+                                            ObjectsInternPool.internUnsynched(((NameTok) ((FunctionDef) entry.node).name).id),
                                             key.name, null, false);
                                     add(info2, TOP_LEVEL);
                                     infoCreated = info2;
@@ -377,18 +379,18 @@ public abstract class AbstractAdditionalTokensInfo {
 
                                         if (entry.node instanceof ClassDef) {
                                             ClassInfo info = new ClassInfo(
-                                                    ObjectsPool
+                                                    ObjectsInternPool
                                                             .internUnsynched(((NameTok) ((ClassDef) entry.node).name).id),
-                                                    key.name, ObjectsPool.internUnsynched(pathToRoot.o1), false);
+                                                    key.name, ObjectsInternPool.internUnsynched(pathToRoot.o1), false);
                                             add(info, INNER);
                                             infoCreated = info;
 
                                         } else {
                                             //FunctionDef
                                             FuncInfo info2 = new FuncInfo(
-                                                    ObjectsPool
+                                                    ObjectsInternPool
                                                             .internUnsynched(((NameTok) ((FunctionDef) entry.node).name).id),
-                                                    key.name, ObjectsPool.internUnsynched(pathToRoot.o1), false);
+                                                    key.name, ObjectsInternPool.internUnsynched(pathToRoot.o1), false);
                                             add(info2, INNER);
                                             infoCreated = info2;
 
@@ -413,7 +415,7 @@ public abstract class AbstractAdditionalTokensInfo {
 
                     }//end lock ObjectsPool.lock
 
-                }//end this.lock        
+                }//end this.lock
 
             } catch (Exception e) {
                 Log.log(e);
@@ -463,10 +465,10 @@ public abstract class AbstractAdditionalTokensInfo {
 
     /**
      * @param lastMayBeMethod if true, it gets the path and accepts a method (if it is the last in the stack)
-     * if false, null is returned if a method is found. 
-     * 
+     * if false, null is returned if a method is found.
+     *
      * @param tempStack is a temporary stack object (which may be cleared)
-     * 
+     *
      * @return a tuple, where the first element is the path where the entry is located (may return null).
      * and the second element is a boolean that indicates if the last was actually a method or not.
      */
@@ -479,7 +481,7 @@ public abstract class AbstractAdditionalTokensInfo {
         tempStack.clear();
 
         boolean lastIsMethod = false;
-        //if the last 'may be a method', in this case, we have to remember that it will actually be the first one 
+        //if the last 'may be a method', in this case, we have to remember that it will actually be the first one
         //to be analyzed.
 
         //let's get the stack
@@ -518,10 +520,13 @@ public abstract class AbstractAdditionalTokensInfo {
         //now that we have the stack, let's make it into a path...
         FastStringBuffer buf = new FastStringBuffer();
         while (tempStack.size() > 0) {
-            if (buf.length() > 0) {
-                buf.append(".");
+            String rep = NodeUtils.getRepresentationString(tempStack.pop());
+            if (rep != null) {
+                if (buf.length() > 0) {
+                    buf.append(".");
+                }
+                buf.append(rep);
             }
-            buf.append(NodeUtils.getRepresentationString(tempStack.pop()));
         }
         return new Tuple<String, Boolean>(buf.toString(), lastIsMethod);
     }
@@ -564,7 +569,7 @@ public abstract class AbstractAdditionalTokensInfo {
 
     /**
      * This is the function for which we are most optimized!
-     * 
+     *
      * @param qualifier the tokens returned have to start with the given qualifier
      * @return a list of info, all starting with the given qualifier
      */
@@ -624,7 +629,7 @@ public abstract class AbstractAdditionalTokensInfo {
         }
 
         //get until the end of the alphabet
-        SortedMap<String, Set<IInfo>> subMap = initialsToInfo.subMap(initials, initials + "z");
+        SortedMap<String, Set<IInfo>> subMap = initialsToInfo.subMap(initials, initials + "\uffff\uffff\uffff\uffff");
 
         for (Set<IInfo> listForInitials : subMap.values()) {
 
@@ -707,13 +712,13 @@ public abstract class AbstractAdditionalTokensInfo {
 
     /**
      * @return the location where we can persist this info.
-     * @throws MisconfigurationException 
+     * @throws MisconfigurationException
      */
     protected abstract File getPersistingLocation() throws MisconfigurationException;
 
     /**
      * @return the path to the folder we want to keep things on
-     * @throws MisconfigurationException 
+     * @throws MisconfigurationException
      */
     protected abstract File getPersistingFolder();
 
@@ -748,7 +753,7 @@ public abstract class AbstractAdditionalTokensInfo {
     /**
      * Restores the saved info in the object (if overridden, getInfoToSave should be overridden too)
      * @param o the read object from the file
-     * @throws MisconfigurationException 
+     * @throws MisconfigurationException
      */
     @SuppressWarnings("unchecked")
     protected void restoreSavedInfo(Object o) throws MisconfigurationException {
@@ -757,6 +762,12 @@ public abstract class AbstractAdditionalTokensInfo {
             SortedMap<String, Set<IInfo>> o1 = (SortedMap<String, Set<IInfo>>) readFromFile.o1;
             SortedMap<String, Set<IInfo>> o2 = (SortedMap<String, Set<IInfo>>) readFromFile.o2;
 
+            if (o1 == null) {
+                throw new RuntimeException("Error in I/O (topLevelInitialsToInfo is null). Rebuilding internal info.");
+            }
+            if (o2 == null) {
+                throw new RuntimeException("Error in I/O (innerInitialsToInfo is null). Rebuilding internal info.");
+            }
             this.topLevelInitialsToInfo = o1;
             this.innerInitialsToInfo = o2;
             if (readFromFile.o3 != null) {
@@ -805,10 +816,10 @@ public abstract class AbstractAdditionalTokensInfo {
     /**
      * @param token the token we want to search for (must be an exact match). Only tokens which are valid identifiers
      * may be searched (i.e.: no dots in it or anything alike).
-     * 
+     *
      * @return List<ModulesKey> a list with all the modules that contains the passed token.
      */
-    public abstract List<ModulesKey> getModulesWithToken(String token, IProgressMonitor monitor);
+    public abstract List<ModulesKey> getModulesWithToken(IProject project, String token, IProgressMonitor monitor);
 
 }
 

@@ -17,12 +17,41 @@ import java.util.List;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.rules.IToken;
 import org.eclipse.jface.text.rules.ITokenScanner;
+import org.python.pydev.shared_core.callbacks.ICallback;
 import org.python.pydev.shared_core.string.FastStringBuffer;
 
 public class TestUtils {
 
-    public static String getContentTypesAsStr(IDocument document) throws Exception
-    {
+    private final static Object lock = new Object();
+
+    /**
+     * If callback returns null, stop the loop, otherwise keep looping (until timeout is reached).
+     */
+    public static void waitUntilCondition(ICallback<String, Object> call) {
+        long currentTimeMillis = System.currentTimeMillis();
+        String msg = null;
+        while (System.currentTimeMillis() < currentTimeMillis + 5000) { //at most 5 seconds
+            msg = call.call(null);
+            if (msg == null) {
+                return;
+            }
+            synchronized (lock) {
+                try {
+                    lock.wait(25);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        throw new AssertionError("Condition not satisfied in 2 seconds. Error message:\n" + msg + "\n");
+    }
+
+    public static String getContentTypesAsStr(IDocument document) throws Exception {
+
+        return listToExpected(getContentTypesAsList(document));
+    }
+
+    public static List<String> getContentTypesAsList(IDocument document) throws Exception {
         String last = null;
 
         List<String> found = new ArrayList<String>();
@@ -45,7 +74,7 @@ public class TestUtils {
         }
         found.add(buf.toString());
 
-        return listToExpected(found);
+        return found;
     }
 
     @SuppressWarnings("rawtypes")
@@ -93,5 +122,23 @@ public class TestUtils {
             token = scanner.nextToken();
         }
         return listToExpected(found);
+    }
+
+    public static String arrayToExpected(byte[] bytes) {
+        ArrayList<Object> lst = new ArrayList<>(bytes.length);
+        for (int i = 0; i < bytes.length; i++) {
+            lst.add(bytes[i]);
+        }
+
+        return listToExpected(lst);
+    }
+
+    public static String arrayToExpected(int[] ints) {
+        ArrayList<Object> lst = new ArrayList<>(ints.length);
+        for (int i = 0; i < ints.length; i++) {
+            lst.add(ints[i]);
+        }
+
+        return listToExpected(lst);
     }
 }

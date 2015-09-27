@@ -2,8 +2,9 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: Pydev debug
 Bundle-SymbolicName: org.python.pydev.debug; singleton:=true
-Bundle-Version: 3.0.0.qualifier
-Bundle-ClassPath: pydev-debug.jar
+Bundle-Version: 4.3.1.qualifier
+Bundle-ClassPath: pydev-debug.jar,
+ libs/winp-1.19.jar
 Bundle-Activator: org.python.pydev.debug.core.PydevDebugPlugin
 Bundle-Vendor: Aptana
 Bundle-Localization: plugin
@@ -21,27 +22,26 @@ Require-Bundle: org.junit;bundle-version="4.0.0";resolution:=optional,
  org.eclipse.ui.workbench.texteditor,
  org.eclipse.core.variables,
  org.eclipse.ui.console,
- org.python.pydev.core,
- org.python.pydev.ast,
- org.python.pydev.parser,
- org.python.pydev;bundle-version="2.7.6",
+ org.python.pydev.core;bundle-version="[4.3.1,4.3.2)",
+ org.python.pydev.ast;bundle-version="[4.3.1,4.3.2)",
+ org.python.pydev.parser;bundle-version="[4.3.1,4.3.2)",
+ org.python.pydev;bundle-version="[4.3.1,4.3.2)",
  org.eclipse.core.expressions,
- org.python.pydev.jython,
- org.python.pydev.shared_interactive_console,
- org.python.pydev.shared_ui
+ org.python.pydev.jython;bundle-version="[4.3.1,4.3.2)",
+ org.python.pydev.shared_interactive_console;bundle-version="[4.3.1,4.3.2)",
+ org.python.pydev.shared_ui;bundle-version="[4.3.1,4.3.2)"
 Bundle-ActivationPolicy: lazy
-Export-Package: org.python.pydev.debug.codecoverage,
- org.python.pydev.debug.core,
- org.python.pydev.debug.model,
- org.python.pydev.debug.model.remote,
- org.python.pydev.debug.newconsole,
- org.python.pydev.debug.newconsole.env,
- org.python.pydev.debug.newconsole.prefs,
- org.python.pydev.debug.pyunit,
- org.python.pydev.debug.ui,
- org.python.pydev.debug.ui.actions,
- org.python.pydev.debug.ui.blocks,
- org.python.pydev.debug.ui.launching,
- org.python.pydev.debug.ui.propertypages
+Export-Package: org.python.pydev.debug.codecoverage,org.python.pydev.d
+ ebug.console,org.python.pydev.debug.core,org.python.pydev.debug.curr_
+ exception,org.python.pydev.debug.handlers,org.python.pydev.debug.mode
+ l,org.python.pydev.debug.model.remote,org.python.pydev.debug.newconso
+ le,org.python.pydev.debug.newconsole.actions,org.python.pydev.debug.n
+ ewconsole.env,org.python.pydev.debug.newconsole.prefs,org.python.pyde
+ v.debug.pyunit,org.python.pydev.debug.quick_assist,org.python.pydev.d
+ ebug.referrers,org.python.pydev.debug.ui,org.python.pydev.debug.ui.ac
+ tions,org.python.pydev.debug.ui.blocks,org.python.pydev.debug.ui.hove
+ r,org.python.pydev.debug.ui.launching,org.python.pydev.debug.ui.prope
+ rtypages,org.python.pydev.debug.ui.variables,org.python.pydev.debug.v
+ iews
 Import-Package: org.eclipse.core.filesystem
 Bundle-RequiredExecutionEnvironment: JavaSE-1.7

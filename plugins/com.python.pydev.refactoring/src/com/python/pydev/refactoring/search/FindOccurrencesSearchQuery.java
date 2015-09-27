@@ -13,6 +13,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 
 import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
@@ -22,21 +23,24 @@ import org.eclipse.core.runtime.SubProgressMonitor;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.search.ui.ISearchResult;
 import org.python.pydev.core.FileUtilsFileBuffer;
+import org.python.pydev.core.IPythonNature;
 import org.python.pydev.core.docutils.PySelection;
 import org.python.pydev.core.log.Log;
 import org.python.pydev.editor.refactoring.RefactoringRequest;
 import org.python.pydev.editorinput.PySourceLocatorBase;
 import org.python.pydev.parser.visitors.scope.ASTEntry;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_core.structure.Tuple;
 
 import com.python.pydev.refactoring.IPyRefactoring2;
 import com.python.pydev.refactoring.actions.PyFindAllOccurrences;
 import com.python.pydev.refactoring.refactorer.search.AbstractPythonSearchQuery;
+import com.python.pydev.refactoring.refactorer.search.copied.FileMatch;
+import com.python.pydev.refactoring.refactorer.search.copied.LineElement;
 import com.python.pydev.refactoring.wizards.rename.AbstractRenameRefactorProcess;
-import com.python.pydev.ui.search.FileMatch;
-import com.python.pydev.ui.search.LineElement;
 
 public class FindOccurrencesSearchQuery extends AbstractPythonSearchQuery {
+    private static final String DEFAULT_DESCRIPTION = "Workspace";
 
     private final IPyRefactoring2 pyRefactoring;
     private final RefactoringRequest req;
@@ -48,6 +52,7 @@ public class FindOccurrencesSearchQuery extends AbstractPythonSearchQuery {
         this.req = req;
     }
 
+    @Override
     public ISearchResult getSearchResult() {
         if (findOccurrencesSearchResult == null) {
             findOccurrencesSearchResult = new FindOccurrencesSearchResult(this);
@@ -55,6 +60,7 @@ public class FindOccurrencesSearchQuery extends AbstractPythonSearchQuery {
         return findOccurrencesSearchResult;
     }
 
+    @Override
     public IStatus run(IProgressMonitor monitor) throws OperationCanceledException {
         try {
             monitor.beginTask("Searching...", 100);
@@ -84,9 +90,15 @@ public class FindOccurrencesSearchQuery extends AbstractPythonSearchQuery {
 
                     IFile workspaceFile = null;
                     try {
-                        workspaceFile = new PySourceLocatorBase().getWorkspaceFile(o.getKey().o2);
+                        IProject project = null;
+                        IPythonNature nature = req.nature;
+                        if (nature != null) {
+                            project = nature.getProject();
+                        }
+
+                        workspaceFile = new PySourceLocatorBase().getWorkspaceFile(o.getKey().o2, project);
                         if (workspaceFile == null) {
-                            Log.logInfo(org.python.pydev.shared_core.string.StringUtils.format("Ignoring: %s. "
+                            Log.logInfo(StringUtils.format("Ignoring: %s. "
                                     + "Unable to resolve to a file in the Eclipse workspace.", o.getKey().o2));
                             continue;
                         }
@@ -132,6 +144,7 @@ public class FindOccurrencesSearchQuery extends AbstractPythonSearchQuery {
         return Status.OK_STATUS;
     }
 
+    @Override
     public String getResultLabel(int nMatches) {
         String searchString = getSearchString();
         if (searchString.length() > 0) {
@@ -139,22 +152,33 @@ public class FindOccurrencesSearchQuery extends AbstractPythonSearchQuery {
             if (isScopeAllFileTypes()) {
                 // search all file extensions
                 if (nMatches == 1) {
-                    return org.python.pydev.shared_core.string.StringUtils.format("%s - 1 match in %s", searchString, getDescription());
+                    return StringUtils.format("%s - 1 match in %s", searchString,
+                            getDescription());
                 }
-                return org.python.pydev.shared_core.string.StringUtils.format("%s - %s matches in %s", searchString, new Integer(nMatches),
+                return StringUtils.format("%s - %s matches in %s", searchString,
+                        new Integer(nMatches),
                         getDescription());
             }
             // search selected file extensions
             if (nMatches == 1) {
-                return org.python.pydev.shared_core.string.StringUtils.format("%s - 1 match in %s", searchString, getDescription());
+                return StringUtils.format("%s - 1 match in %s", searchString,
+                        getDescription());
             }
-            return org.python.pydev.shared_core.string.StringUtils.format("%s - %s matches in %s", searchString, new Integer(nMatches), getDescription());
+            return StringUtils.format("%s - %s matches in %s", searchString,
+                    new Integer(nMatches), getDescription());
         }
         throw new RuntimeException("Unexpected condition when finding: " + searchString);
     }
 
     private String getDescription() {
-        return "'" + req.pyEdit.getProject().getName() + "' and related projects";
+        if (req.pyEdit == null) {
+            return DEFAULT_DESCRIPTION;
+        }
+        IProject project = req.pyEdit.getProject();
+        if (project == null) {
+            return DEFAULT_DESCRIPTION;
+        }
+        return "'" + project.getName() + "' and related projects";
     }
 
 }

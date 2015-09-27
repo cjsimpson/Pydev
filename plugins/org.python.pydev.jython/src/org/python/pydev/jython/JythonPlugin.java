@@ -28,9 +28,10 @@ import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
 import org.python.core.PyClass;
 import org.python.core.PyException;
-import org.python.core.PyJavaClass;
+import org.python.core.PyJavaType;
 import org.python.core.PyObject;
 import org.python.core.PySystemState;
+import org.python.pydev.core.NullOutputStream;
 import org.python.pydev.core.log.Log;
 import org.python.pydev.jython.ui.JyScriptingPreferencesPage;
 import org.python.pydev.shared_core.callbacks.ICallback0;
@@ -98,6 +99,7 @@ public class JythonPlugin extends AbstractUIPlugin {
 
     //The shared instance.
     private static JythonPlugin plugin;
+    private static Bundle[] bundles;
 
     /**
      * The constructor.
@@ -219,23 +221,45 @@ public class JythonPlugin extends AbstractUIPlugin {
     @Override
     public void start(BundleContext context) throws Exception {
         super.start(context);
-        //initialize the Jython runtime
-        Properties prop2 = new Properties();
-        prop2.put("python.home", FileUtils.getFileAbsolutePath(getPluginRootDir()));
-        prop2.put("python.path", FileUtils.getFileAbsolutePath(getJySrcDirFile()));
-        prop2.put("python.security.respectJavaAccessibility", "false"); //don't respect java accessibility, so that we can access protected members on subclasses
+        bundles = context.getBundles();
+    }
 
-        try {
-            AllBundleClassLoader allBundleClassLoader = new AllBundleClassLoader(this.getClass().getClassLoader());
+    private static final Object lock = new Object();
 
-            PySystemState.initialize(System.getProperties(), prop2, new String[0], allBundleClassLoader);
-            List<String> packageNames = allBundleClassLoader.setBundlesAndGetPackageNames(context.getBundles());
-            int size = packageNames.size();
-            for (int i = 0; i < size; ++i) {
-                PySystemState.add_package(packageNames.get(i));
+    private static void setupJython() {
+        synchronized (lock) {
+            if (bundles != null && plugin != null) {
+                //initialize the Jython runtime
+                Properties prop2 = new Properties();
+                prop2.put("python.home", FileUtils.getFileAbsolutePath(plugin.getPluginRootDir()));
+                prop2.put("python.path", FileUtils.getFileAbsolutePath(getJySrcDirFile()));
+                prop2.put("python.console.encoding", "UTF-8"); // Used to prevent: console: Failed to install '': java.nio.charset.UnsupportedCharsetException: cp0.
+                prop2.put("python.security.respectJavaAccessibility", "false"); //don't respect java accessibility, so that we can access protected members on subclasses
+                try {
+                    AllBundleClassLoader allBundleClassLoader = new AllBundleClassLoader(plugin.getClass()
+                            .getClassLoader());
+
+                    PySystemState.initialize(System.getProperties(), prop2, new String[0], allBundleClassLoader);
+                    List<String> packageNames = allBundleClassLoader.setBundlesAndGetPackageNames(bundles);
+                    int size = packageNames.size();
+                    for (int i = 0; i < size; ++i) {
+                        String name = packageNames.get(i);
+                        if (name.contains("internal")) {
+                            continue;
+                        }
+                        int iToSplit = name.indexOf(';');
+                        if (iToSplit != -1) {
+                            name = name.substring(0, iToSplit);
+                        }
+                        //System.out.println("Added: " + name);
+                        PySystemState.add_package(name);
+                    }
+                } catch (Exception e) {
+                    Log.log(e);
+                } finally {
+                    bundles = null;
+                }
             }
-        } catch (Exception e) {
-            Log.log(e);
         }
     }
 
@@ -300,19 +324,19 @@ public class JythonPlugin extends AbstractUIPlugin {
      * - Compiling it to a code object (that will remain in the 'code' local for the interpreter)
      * - Making a call to exec that code
      * - Returning the local in the interpreter regarded as jythonResult
-     * 
+     *
      * Additional notes:
      * - The code object will be regenerated only if:
      *         - It still didn't exist (dought!!)
      *         - The timestamp of the file changed
-     * 
+     *
      * @param locals Those are the locals that should be added to the interpreter before calling the actual code
      * @param fileToExec the file that should be executed (relative to the JythonPlugin jysrc folder)
      * @param interpreter the interpreter that should be used to execute the code
-     *         
+     *
      # @note If further info is needed (after the run), the interpreter itself should be checked for return values
      * @return any error that happened while executing the script
-     * 
+     *
      */
     public static Throwable exec(HashMap<String, Object> locals, String fileToExec, IPythonInterpreter interpreter) {
         File fileWithinJySrc = JythonPlugin.getFileWithinJySrc(fileToExec);
@@ -428,14 +452,14 @@ public class JythonPlugin extends AbstractUIPlugin {
                 }
 
                 Tuple<Long, Object> timestamp = codeCache.get(fileToExec);
-                final long lastModified = fileToExec.lastModified();
+                final long lastModified = FileUtils.lastModified(fileToExec);
                 if (timestamp == null || timestamp.o1 != lastModified) {
                     //the file timestamp changed, so, we have to regenerate it
                     regenerate = true;
                 }
 
                 if (!regenerate) {
-                    //if the 'code' object does not exist or if it's timestamp is outdated, we have to re-set it. 
+                    //if the 'code' object does not exist or if it's timestamp is outdated, we have to re-set it.
                     PyObject obj = interpreter.get(codeObjName);
                     PyObject pyTime = interpreter.get(codeObjTimestampName);
                     if (obj == null || pyTime == null || !pyTime.__tojava__(Long.class).equals(timestamp.o1)) {
@@ -489,11 +513,11 @@ public class JythonPlugin extends AbstractUIPlugin {
                         addToSysPath.append("\n");
                     }
 
-                    String toExec = org.python.pydev.shared_core.string.StringUtils.format(LOAD_FILE_SCRIPT, path,
+                    String toExec = StringUtils.format(LOAD_FILE_SCRIPT, path,
                             path,
                             addToSysPath.toString());
                     interpreter.exec(toExec);
-                    String exec = org.python.pydev.shared_core.string.StringUtils.format(
+                    String exec = StringUtils.format(
                             "%s = compile(toExec, r'%s', 'exec')", codeObjName, path);
                     interpreter.exec(exec);
                     //set its timestamp
@@ -504,7 +528,7 @@ public class JythonPlugin extends AbstractUIPlugin {
                 }
             }
 
-            interpreter.exec(org.python.pydev.shared_core.string.StringUtils.format("exec(%s)", codeObjName));
+            interpreter.exec(StringUtils.format("exec(%s)", codeObjName));
         } catch (Throwable e) {
             if (!IN_TESTS && JythonPlugin.getDefault() == null) {
                 //it is already disposed
@@ -517,9 +541,9 @@ public class JythonPlugin extends AbstractUIPlugin {
             //actually, this is more likely to happen when raising an exception in jython
             if (e instanceof PyException) {
                 PyException pE = (PyException) e;
-                if (pE.type instanceof PyJavaClass) {
-                    PyJavaClass t = (PyJavaClass) pE.type;
-                    if (t.__name__ != null && t.__name__.equals("org.python.pydev.jython.ExitScriptException")) {
+                if (pE.type instanceof PyJavaType) {
+                    PyJavaType t = (PyJavaType) pE.type;
+                    if (t.getName() != null && t.getName().equals("org.python.pydev.jython.ExitScriptException")) {
                         return null;
                     }
                 } else if (pE.type instanceof PyClass) {
@@ -581,10 +605,12 @@ public class JythonPlugin extends AbstractUIPlugin {
 
     /**
      * Creates a new Python interpreter (with jython) and returns it.
-     * 
+     *
      * Note that if the sys is not shared, clients should be in a Thread for it to be really separate).
      */
     public static IPythonInterpreter newPythonInterpreter(boolean redirect, boolean shareSys) {
+        setupJython(); //Important: setup the pythonpath for the jython process.
+
         IPythonInterpreter interpreter;
         if (shareSys) {
             interpreter = new PythonInterpreterWrapper();
@@ -607,14 +633,10 @@ public class JythonPlugin extends AbstractUIPlugin {
                     return fErrorStream;
                 }
             }));
+        } else {
+            interpreter.setErr(NullOutputStream.singleton);
+            interpreter.setOut(NullOutputStream.singleton);
         }
-        interpreter.set("False", 0);
-        interpreter.set("True", 1);
         return interpreter;
     }
-
-    public static IInteractiveConsole newInteractiveConsole() {
-        return new InteractiveConsoleWrapper();
-    }
-
 }

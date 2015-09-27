@@ -1,6 +1,3 @@
-from __future__ import nested_scopes # for Jython 2.1 compatibility
-
-#@PydevCodeAnalysisIgnore
 '''
 This module contains template variables (added through the templates engine).
 
@@ -19,7 +16,7 @@ to clear the cache so that any changed files regarding the templates are (re)eva
 other way to get the changes applied is restarting eclipse).
 
 The concept is the same as the default scripting engine in pydev. The only difference is that it'll
-only get files starting with 'pytemplate', so, it's also worth checking 
+only get files starting with 'pytemplate', so, it's also worth checking
 http://pydev.org/manual_articles_scripting.html
 
 context passed as parameter: org.python.pydev.editor.codecompletion.templates.PyDocumentTemplateContext
@@ -30,7 +27,7 @@ import template_helper
 
 if False:
     #Variables added externally by the runner of this module.
-    py_context_type = org.python.pydev.editor.templates.PyContextType
+    py_context_type = org.python.pydev.editor.templates.PyContextType  # @UndefinedVariable
 
 
 #===================================================================================================
@@ -58,7 +55,7 @@ template_helper.AddTemplateVariable(py_context_type, 'file', 'Full path for file
 #===================================================================================================
 def _IsGrammar3(context):
     if context is None:
-        return False #Default is Python 2
+        return False  #Default is Python 2
     from org.python.pydev.core import IGrammarVersionProvider
     if context.getGrammarVersion() >= IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_0:
         return True
@@ -135,12 +132,12 @@ def _GetCurrentASTPath(context, reverse=False):
     '''
     @return: ArrayList(SimpleNode)
     '''
-    FastParser = context.getFastParserClass() # from org.python.pydev.parser.fastparser import FastParser
+    FastParser = context.getFastParserClass()  # from org.python.pydev.parser.fastparser import FastParser
     selection = _CreateSelection(context)
     ret = FastParser.parseToKnowGloballyAccessiblePath(
         context.getDocument(), selection.getStartLineIndex())
     if reverse:
-        from java.util import Collections
+        from java.util import Collections  # @UnresolvedImport
         Collections.reverse(ret)
 
     return ret
@@ -150,7 +147,7 @@ def _GetCurrentASTPath(context, reverse=False):
 # GetQualifiedNameScope
 #===================================================================================================
 def GetQualifiedNameScope(context):
-    NodeUtils = context.getNodeUtilsClass() # from org.python.pydev.parser.visitors import NodeUtils
+    NodeUtils = context.getNodeUtilsClass()  # from org.python.pydev.parser.visitors import NodeUtils
 
     ret = ''
     for stmt in _GetCurrentASTPath(context):
@@ -169,8 +166,8 @@ template_helper.AddTemplateVariable(
 # _GetCurrentClassStmt
 #===================================================================================================
 def _GetCurrentClassStmt(context):
-    NodeUtils = context.getNodeUtilsClass() #from org.python.pydev.parser.visitors import NodeUtils
-    ClassDef = context.getClassDefClass() # from org.python.pydev.parser.jython.ast import ClassDef
+    NodeUtils = context.getNodeUtilsClass()  #from org.python.pydev.parser.visitors import NodeUtils
+    ClassDef = context.getClassDefClass()  # from org.python.pydev.parser.jython.ast import ClassDef
 
     for stmt in _GetCurrentASTPath(context, True):
         if isinstance(stmt, ClassDef):
@@ -182,8 +179,8 @@ def _GetCurrentClassStmt(context):
 # GetCurrentClass
 #===================================================================================================
 def GetCurrentClass(context):
-    NodeUtils = context.getNodeUtilsClass() #from org.python.pydev.parser.visitors import NodeUtils
-    ClassDef = context.getClassDefClass() # from org.python.pydev.parser.jython.ast import ClassDef
+    NodeUtils = context.getNodeUtilsClass()  #from org.python.pydev.parser.visitors import NodeUtils
+    ClassDef = context.getClassDefClass()  # from org.python.pydev.parser.jython.ast import ClassDef
 
     stmt = _GetCurrentClassStmt(context)
     if stmt is not None:
@@ -199,7 +196,7 @@ template_helper.AddTemplateVariable(py_context_type, 'current_class', 'Current c
 # GetPydevdFileLocation
 #===================================================================================================
 def GetPydevdFileLocation(context):
-    from org.python.pydev.debug.ui.launching import PythonRunnerConfig
+    from org.python.pydev.debug.ui.launching import PythonRunnerConfig  # @UnresolvedImport
     return PythonRunnerConfig.getDebugScript()
 
 template_helper.AddTemplateVariable(
@@ -209,7 +206,7 @@ template_helper.AddTemplateVariable(
 # GetPydevdDirLocation
 #===================================================================================================
 def GetPydevdDirLocation(context):
-    from org.python.pydev.debug.ui.launching import PythonRunnerConfig
+    from org.python.pydev.debug.ui.launching import PythonRunnerConfig  # @UnresolvedImport
     import os
     return os.path.split(PythonRunnerConfig.getDebugScript())[0]
 
@@ -222,8 +219,8 @@ template_helper.AddTemplateVariable(
 # GetCurrentMethod
 #===================================================================================================
 def GetCurrentMethod(context):
-    NodeUtils = context.getNodeUtilsClass() #from org.python.pydev.parser.visitors import NodeUtils
-    FunctionDef = context.getFunctionDefClass() # from org.python.pydev.parser.jython.ast import FunctionDef
+    NodeUtils = context.getNodeUtilsClass()  #from org.python.pydev.parser.visitors import NodeUtils
+    FunctionDef = context.getFunctionDefClass()  # from org.python.pydev.parser.jython.ast import FunctionDef
 
     for stmt in _GetCurrentASTPath(context, True):
         if isinstance(stmt, FunctionDef):
@@ -239,8 +236,8 @@ template_helper.AddTemplateVariable(py_context_type, 'current_method', 'Current 
 # _GetPreviousOrNextClassOrMethod
 #===================================================================================================
 def _GetPreviousOrNextClassOrMethod(context, searchForward):
-    NodeUtils = context.getNodeUtilsClass() #from org.python.pydev.parser.visitors import NodeUtils
-    FastParser = context.getFastParserClass() #from org.python.pydev.parser.fastparser import FastParser
+    NodeUtils = context.getNodeUtilsClass()  #from org.python.pydev.parser.visitors import NodeUtils
+    FastParser = context.getFastParserClass()  #from org.python.pydev.parser.fastparser import FastParser
     doc = context.getDocument()
     selection = _CreateSelection(context)
     startLine = selection.getStartLineIndex()
@@ -278,7 +275,7 @@ template_helper.AddTemplateVariable(
 def GetSuperclass(context):
     selection = _CreateSelection(context)
     stmt = _GetCurrentClassStmt(context)
-    BadLocationException = context.getBadLocationExceptionClass() # from org.eclipse.jface.text import BadLocationException
+    BadLocationException = context.getBadLocationExceptionClass()  # from org.eclipse.jface.text import BadLocationException
     if stmt is not None:
         doc = context.getDocument()
         name = stmt.name
@@ -302,7 +299,7 @@ def GetSuperclass(context):
                 elif c in ('\r', '\n', ' ', '\t'):
                     pass
 
-                elif c == '#': #skip comments
+                elif c == '#':  #skip comments
                     while c not in ('\r', '\n'):
                         c = doc.get(nameStartOffset + i, 1)
                         i += 1
@@ -313,7 +310,7 @@ def GetSuperclass(context):
                         contents += c
 
             except BadLocationException:
-                return '' #Seems the class declaration is not properly finished as we're now out of bounds in the doc.
+                return ''  #Seems the class declaration is not properly finished as we're now out of bounds in the doc.
 
         if ',' in contents:
             ret = []

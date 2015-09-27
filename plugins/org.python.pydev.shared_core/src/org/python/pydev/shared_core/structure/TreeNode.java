@@ -7,17 +7,27 @@
 package org.python.pydev.shared_core.structure;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
+import org.eclipse.core.runtime.IAdaptable;
+import org.python.pydev.shared_core.callbacks.ICallback;
 import org.python.pydev.shared_core.string.FastStringBuffer;
 
-public class TreeNode<T> {
+/**
+ * Note: equals and hashCode are identity based (i.e.: Object implementation).
+ */
+@SuppressWarnings({ "unchecked", "rawtypes" })
+public class TreeNode<T> implements IAdaptable {
 
-    private T data;
-    protected final LowMemoryArrayList<TreeNode<T>> children = new LowMemoryArrayList<TreeNode<T>>();
+    public T data;
+
+    /**
+     * Note: children of a class don't necessarily have the same type as the parent.
+     */
+    protected final LowMemoryArrayList<TreeNode> children = new LowMemoryArrayList<TreeNode>();
     private Object parent;
 
-    @SuppressWarnings({ "unchecked", "rawtypes" })
     public TreeNode(Object parent, T data) {
         this.parent = parent;
         if (parent instanceof TreeNode) {
@@ -26,7 +36,17 @@ public class TreeNode<T> {
         setData(data);
     }
 
-    public List<TreeNode<T>> getChildren() {
+    public void setParent(Object parent) {
+        if (this.parent != null) {
+            this.detachFromParent();
+        }
+        this.parent = parent;
+        if (parent instanceof TreeNode) {
+            ((TreeNode) parent).addChild(this);
+        }
+    }
+
+    public List<TreeNode> getChildren() {
         return this.children;
     }
 
@@ -38,7 +58,7 @@ public class TreeNode<T> {
         this.data = data;
     }
 
-    private void addChild(TreeNode<T> treeNode) {
+    private void addChild(TreeNode treeNode) {
         this.children.add(treeNode);
     }
 
@@ -52,32 +72,72 @@ public class TreeNode<T> {
 
     @Override
     public String toString() {
+        return super.toString();
+    }
+
+    // To use while debugging
+    public String toStringRepr() {
         FastStringBuffer buf = new FastStringBuffer();
         fillBuf(this, buf, 0);
         return buf.toString();
     }
 
-    private void fillBuf(TreeNode<T> treeNode, FastStringBuffer buf, int level) {
+    protected void fillBuf(TreeNode<T> treeNode, FastStringBuffer buf, int level) {
         buf.appendN("    ", level).append("TreeNode:").appendObject(treeNode.data).append('\n');
         for (TreeNode<T> child : treeNode.children) {
             fillBuf(child, buf, level + 1);
         }
     }
 
-    public List<TreeNode<T>> flatten() {
-        ArrayList<TreeNode<T>> array = new ArrayList<TreeNode<T>>(this.getChildren().size() + 10);
+    /**
+     * Note that it collects only children (the root node is not considered).
+     */
+    public <Y> List<TreeNode<Y>> flattenChildren() {
+        ArrayList<TreeNode<Y>> array = new ArrayList<TreeNode<Y>>(this.getChildren().size() + 10);
         collectChildren(array);
         return array;
     }
 
-    private void collectChildren(ArrayList<TreeNode<T>> array) {
-        List<TreeNode<T>> c = this.getChildren();
+    private <Y> void collectChildren(ArrayList<TreeNode<Y>> array) {
+        List<TreeNode> c = this.getChildren();
         int size = c.size();
         array.ensureCapacity(array.size() + size);
         for (int i = 0; i < size; i++) {
-            TreeNode<T> next = c.get(i);
+            TreeNode<Y> next = c.get(i);
             array.add(next);
             next.collectChildren(array);
+        }
+    }
+
+    /**
+     * Note that it visits only children (the root node is not visited).
+     */
+    public <Y> void visitChildrenRecursive(ICallback<Object, TreeNode<Y>> onChild) {
+        List<TreeNode> c = this.getChildren();
+        for (Iterator<TreeNode> iterator = c.iterator(); iterator.hasNext();) {
+            TreeNode treeNode = iterator.next();
+            onChild.call(treeNode);
+            treeNode.visitChildrenRecursive(onChild);
+        }
+    }
+
+    public void clear() {
+        this.children.clear();
+    }
+
+    @Override
+    public <Z> Z getAdapter(Class<Z> adapter) {
+        if (data instanceof IAdaptable) {
+            return ((IAdaptable) data).getAdapter(adapter);
+        }
+        return null;
+    }
+
+    public void detachFromParent() {
+        if (parent instanceof TreeNode<?>) {
+            TreeNode<?> parentNode = (TreeNode<?>) parent;
+            ((TreeNode) parent).children.remove(this);
+            this.parent = null;
         }
     }
 

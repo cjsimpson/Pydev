@@ -67,6 +67,7 @@ public class UIConstants {
     public static final String CLOSE_ICON = "icons/close.gif";
     public static final String SOURCE_FOLDER_ICON = "icons/packagefolder_obj.gif";
     public static final String PROJECT_SOURCE_FOLDER_ICON = "icons/project_source_folder.gif";
+    public static final String PROJECT_ICON = "icons/project.png";
 
     //completion
     public static final String BUILTINS_ICON = "icons/builtin_obj.gif";
@@ -86,6 +87,7 @@ public class UIConstants {
     public static final String ASSIST_TRY_FINNALLY = COMPLETION_TEMPLATE;
 
     public static final String ASSIST_NEW_METHOD = "icons/add_correction.gif";
+    public static final String ASSIST_NEW_GENERIC = "icons/add_correction.gif";
     public static final String ASSIST_NEW_CLASS = CLASS_ICON;
 
     public static final String ASSIST_MOVE_IMPORT = "icons/correction_move.gif";
@@ -98,6 +100,7 @@ public class UIConstants {
     //libraries
     public static final String LIB_SYSTEM_ROOT = "icons/library_obj.gif";
     public static final String LIB_SYSTEM = "icons/jar_l_obj.gif";
+    public static final String REMOVE_LIB_SYSTEM = "icons/jar_remove_l_obj.gif";
     public static final String LIB_FORCED_BUILTIN = "icons/jar_obj.gif";
 
     //general
@@ -118,6 +121,9 @@ public class UIConstants {
     public static final String SHOW_ONLY_ERRORS = "icons/failures.gif";
     public static final String WORKING_SET = "icons/workset.gif";
 
+    public static final String REMOVE = "icons/remove.gif";
+    public static final String REMOVE_ALL = "icons/remove_all.gif"; //note: only in SharedUI plugin.
+
     //browser
     public static final String STOP = "icons/showerr_tsk.gif";
     public static final String REFRESH = "icons/refresh_nav.gif";
@@ -125,10 +131,16 @@ public class UIConstants {
     public static final String BACK = "icons/backward_nav.gif";
     public static final String HOME = "icons/home_nav.gif";
 
+    public static final String CONSOLE_ENABLED = "icons/console_enabled.png";
+    public static final String CONSOLE_DISABLED = "icons/console_disabled.png";
+
     public static final String FORCE_TABS_ACTIVE = "icons/tabs_active.png";
     public static final String FORCE_TABS_INACTIVE = "icons/tabs_inactive.png";
     public static final String PY_LINT_ICON = "icons/pylint.png";
     public static final String WARNING = "icons/warning.png";
     public static final String ERROR_DECORATION = "icons/error_decoration.gif";
     public static final String WARNING_DECORATION = "icons/warning_decoration.gif";
+
+    // search
+    public static final String LINE_MATCH = "icons/line_match.gif";
 }

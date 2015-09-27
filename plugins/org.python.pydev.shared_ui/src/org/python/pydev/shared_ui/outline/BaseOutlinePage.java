@@ -23,7 +23,6 @@ import org.eclipse.jface.action.IMenuManager;
 import org.eclipse.jface.action.IToolBarManager;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.jface.text.IDocument;
-import org.eclipse.jface.viewers.AbstractTreeViewer;
 import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.ISelectionChangedListener;
 import org.eclipse.jface.viewers.IStructuredSelection;
@@ -58,11 +57,10 @@ public abstract class BaseOutlinePage extends ContentOutlinePageWithFilter imple
 
     public abstract IPreferenceStore getStore();
 
-    public abstract IOutlineModel createParsedModel();
-
     protected IDocument document;
 
-    protected IOutlineModel model;
+    //Important: it must be final (i.e.: never change)
+    protected final IOutlineModel model;
 
     protected final ImageCache imageCache;
 
@@ -85,6 +83,8 @@ public abstract class BaseOutlinePage extends ContentOutlinePageWithFilter imple
         this.imageCache = imageCache;
         this.editorView = editorView;
         this.pluginId = pluginId;
+        this.model = (IOutlineModel) editorView.getAdapter(IOutlineModel.class);
+        this.model.setOutlinePage(this);
     }
 
     public IOutlineModel getOutlineModel() {
@@ -102,17 +102,25 @@ public abstract class BaseOutlinePage extends ContentOutlinePageWithFilter imple
         final TreeViewer tree = getTreeViewer();
         IDocumentProvider provider = editorView.getDocumentProvider();
         document = provider.getDocument(editorView.getEditorInput());
-        model = createParsedModel();
-        tree.setAutoExpandLevel(AbstractTreeViewer.ALL_LEVELS);
+        tree.setAutoExpandLevel(2);
         tree.setContentProvider(new ParsedContentProvider());
         tree.setLabelProvider(new ParsedLabelProvider(imageCache));
-        tree.setInput(model.getRoot());
+        tree.setInput(getOutlineModel().getRoot());
     }
 
-    public boolean isDisposed() {
-        return getTreeViewer().getTree().isDisposed();
+    public boolean isDisconnectedFromTree() {
+        TreeViewer treeViewer2 = getTreeViewer();
+        if (treeViewer2 == null) {
+            return true;
+        }
+        Tree tree = treeViewer2.getTree();
+        if (tree == null) {
+            return true;
+        }
+        return tree.isDisposed();
     }
 
+    @Override
     public void dispose() {
         onControlDisposed.call(getTreeViewer());
         if (createdCallbacksForControls != null) {
@@ -121,11 +129,7 @@ public abstract class BaseOutlinePage extends ContentOutlinePageWithFilter imple
             }
             createdCallbacksForControls = null;
         }
-
-        if (model != null) {
-            model.dispose();
-            model = null;
-        }
+        //note: don't dispose on the model (we don't have ownership for it).
         if (selectionListener != null) {
             removeSelectionChangedListener(selectionListener);
         }
@@ -151,7 +155,7 @@ public abstract class BaseOutlinePage extends ContentOutlinePageWithFilter imple
             TreeViewer viewer = getTreeViewer();
             if (viewer != null) {
                 Tree treeWidget = viewer.getTree();
-                if (isDisposed()) {
+                if (isDisconnectedFromTree()) {
                     return;
                 }
 
@@ -161,13 +165,13 @@ public abstract class BaseOutlinePage extends ContentOutlinePageWithFilter imple
                     barPosition = bar.getSelection();
                 }
                 if (items == null) {
-                    if (isDisposed()) {
+                    if (isDisconnectedFromTree()) {
                         return;
                     }
                     viewer.refresh();
 
                 } else {
-                    if (isDisposed()) {
+                    if (isDisconnectedFromTree()) {
                         return;
                     }
                     for (int i = 0; i < items.length; i++) {
@@ -193,7 +197,7 @@ public abstract class BaseOutlinePage extends ContentOutlinePageWithFilter imple
     public void updateItems(Object[] items) {
         try {
             unlinkAll();
-            if (isDisposed()) {
+            if (isDisconnectedFromTree()) {
                 return;
             }
             TreeViewer tree = getTreeViewer();
@@ -253,15 +257,31 @@ public abstract class BaseOutlinePage extends ContentOutlinePageWithFilter imple
 
         //---- Collapse all
         Action collapseAll = new Action("Collapse all", IAction.AS_PUSH_BUTTON) {
+            @Override
             public void run() {
-                getTreeViewer().collapseAll();
+                TreeViewer treeViewer2 = getTreeViewer();
+                Tree tree = treeViewer2.getTree();
+                tree.setRedraw(false);
+                try {
+                    getTreeViewer().collapseAll();
+                } finally {
+                    tree.setRedraw(true);
+                }
             }
         };
 
         //---- Expand all
         Action expandAll = new Action("Expand all", IAction.AS_PUSH_BUTTON) {
+            @Override
             public void run() {
-                getTreeViewer().expandAll();
+                TreeViewer treeViewer2 = getTreeViewer();
+                Tree tree = treeViewer2.getTree();
+                tree.setRedraw(false);
+                try {
+                    treeViewer2.expandAll();
+                } finally {
+                    tree.setRedraw(true);
+                }
             }
         };
 
@@ -316,7 +336,7 @@ public abstract class BaseOutlinePage extends ContentOutlinePageWithFilter imple
                             }
                         }
                         if (!alreadySelected) {
-                            ISimpleNode[] node = model.getSelectionPosition(sel);
+                            ISimpleNode[] node = getOutlineModel().getSelectionPosition(sel);
                             editorView.revealModelNodes(node);
                         }
                     } finally {
@@ -444,4 +464,5 @@ public abstract class BaseOutlinePage extends ContentOutlinePageWithFilter imple
     public ICallbackWithListeners getOnControlDisposed() {
         return onControlDisposed;
     }
+
 }

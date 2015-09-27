@@ -20,6 +20,18 @@ public class PydevDebugPreferencesInitializer extends AbstractPreferenceInitiali
     public static final String HIDE_PYDEVD_THREADS = "HIDE_PYDEVD_THREADS";
     public static final boolean DEFAULT_HIDE_PYDEVD_THREADS = true;
 
+    public static final String IGNORE_EXCEPTIONS_THROWN_IN_LINES_WITH_IGNORE_EXCEPTION = "IGNORE_EXCEPTIONS_THROWN_IN_LINES_WITH_IGNORE_EXCEPTION";
+    public static final boolean DEFAULT_IGNORE_EXCEPTIONS_THROWN_IN_LINES_WITH_IGNORE_EXCEPTION = true;
+
+    public static final String SKIP_CAUGHT_EXCEPTIONS_IN_SAME_FUNCTION = "SKIP_CAUGHT_EXCEPTIONS_IN_SAME_FUNCTION";
+    public static final boolean DEFAULT_SKIP_CAUGHT_EXCEPTIONS_IN_SAME_FUNCTION = false;
+
+    public static final String SHOW_CONSOLE_PROMPT_ON_DEBUG = "SHOW_CONSOLE_PROMPT_ON_DEBUG";
+    public final static String RELATIVE_CONSOLE_HEIGHT = "RELATIVE_CONSOLE_HEIGHT";
+    public final static String CONSOLE_PROMPT_OUTPUT_MODE = "CONSOLE_PROMPT_OUTPUT_MODE";
+    public final static int MODE_ASYNC_SEPARATE_CONSOLE = 1;
+    public final static int MODE_NOT_ASYNC_SAME_CONSOLE = 2;
+
     @Override
     public void initializeDefaultPreferences() {
         Preferences node = new DefaultScope().getNode("org.python.pydev.debug");
@@ -33,6 +45,17 @@ public class PydevDebugPreferencesInitializer extends AbstractPreferenceInitiali
 
         //debug prefs
         node.putBoolean(HIDE_PYDEVD_THREADS, DEFAULT_HIDE_PYDEVD_THREADS);
+        node.putBoolean(SKIP_CAUGHT_EXCEPTIONS_IN_SAME_FUNCTION, DEFAULT_SKIP_CAUGHT_EXCEPTIONS_IN_SAME_FUNCTION);
+        node.putBoolean(IGNORE_EXCEPTIONS_THROWN_IN_LINES_WITH_IGNORE_EXCEPTION,
+                DEFAULT_IGNORE_EXCEPTIONS_THROWN_IN_LINES_WITH_IGNORE_EXCEPTION);
+
+        //Prefs on console prompt on debug
+        node.putBoolean(SHOW_CONSOLE_PROMPT_ON_DEBUG, true);
+        node.putInt(RELATIVE_CONSOLE_HEIGHT, 30);
+        node.putInt(CONSOLE_PROMPT_OUTPUT_MODE, MODE_ASYNC_SEPARATE_CONSOLE);
+
+        //Note: the preferences for the debug which appear in the preferences page are actually in
+        //the PydevEditorPrefs (as we use the pydev preferences store there).
 
         // Delegate to the variables preferences
         PyVariablesPreferences.initializeDefaultPreferences();

@@ -50,7 +50,7 @@ public class PyParserEditorIntegrationTest extends TestCase {
             throw new RuntimeException("Not implemented");
         }
 
-        public void parserChanged(ISimpleNode root, IAdaptable file, IDocument doc) {
+        public void parserChanged(ISimpleNode root, IAdaptable file, IDocument doc, long docModificationStamp) {
             this.parserChanged += 1;
         }
 
@@ -60,6 +60,11 @@ public class PyParserEditorIntegrationTest extends TestCase {
 
         public Map<String, Object> getCache() {
             return this.cache;
+        }
+
+        @Override
+        public Object getAdapter(Class adapter) {
+            return null;
         }
 
         public boolean hasSameInput(IBaseEditor edit) {

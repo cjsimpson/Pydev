@@ -14,6 +14,10 @@ package org.python.pydev.shared_core.process;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
@@ -24,7 +28,9 @@ import org.python.pydev.shared_core.SharedCorePlugin;
 import org.python.pydev.shared_core.io.ThreadStreamReader;
 import org.python.pydev.shared_core.log.Log;
 import org.python.pydev.shared_core.string.FastStringBuffer;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_core.structure.Tuple;
+import org.python.pydev.shared_core.utils.PlatformUtils;
 
 public class ProcessUtils {
     /**
@@ -130,7 +136,7 @@ public class ProcessUtils {
             monitor.setTaskName("Making exec..." + executionString);
             if (workingDir != null) {
                 if (!workingDir.isDirectory()) {
-                    throw new RuntimeException(org.python.pydev.shared_core.string.StringUtils.format(
+                    throw new RuntimeException(StringUtils.format(
                             "Working dir must be an existing directory (received: %s)", workingDir));
                 }
             }
@@ -143,12 +149,12 @@ public class ProcessUtils {
 
     /**
      * Runs the given command line and returns a tuple with the output (stdout and stderr) of executing it.
-     * 
+     *
      * @param cmdarray array with the commands to be passed to Runtime.exec
      * @param workingDir the working dir (may be null)
      * @param project the project (used to get the pythonpath and put it into the environment) -- if null, no environment is passed.
      * @param monitor the progress monitor to be used -- may be null
-     * 
+     *
      * @return a tuple with stdout and stderr
      */
     public static Tuple<String, String> runAndGetOutput(String[] cmdarray, String[] envp, File workingDir,
@@ -206,4 +212,254 @@ public class ProcessUtils {
         }
         return buf.toString();
     }
+
+    public static String getEnvironmentAsStr(String[] envp) {
+        return StringUtils.join("\n", envp);
+    }
+
+    /**
+     * @param env a map that will have its values formatted to xx=yy, so that it can be passed in an exec
+     * @return an array with the formatted map
+     */
+    public static String[] getMapEnvAsArray(Map<String, String> env) {
+        List<String> strings = new ArrayList<String>(env.size());
+        FastStringBuffer buffer = new FastStringBuffer();
+        for (Iterator<Map.Entry<String, String>> iter = env.entrySet().iterator(); iter.hasNext();) {
+            Map.Entry<String, String> entry = iter.next();
+            buffer.clear().append(entry.getKey());
+            buffer.append('=').append(entry.getValue());
+            strings.add(buffer.toString());
+        }
+
+        return strings.toArray(new String[strings.size()]);
+    }
+
+    /**
+     * Parses the given command line into separate arguments that can be passed to
+     * <code>DebugPlugin.exec(String[], File)</code>. Embedded quotes and slashes
+     * are escaped.
+     *
+     * @param args command line arguments as a single string
+     * @return individual arguments
+     * @since 3.1
+     *
+     * Gotten from org.eclipse.debug.core.DebugPlugin
+     */
+    public static String[] parseArguments(String args) {
+        if (args == null || args.length() == 0) {
+            return new String[0];
+        }
+
+        if (PlatformUtils.isWindowsPlatform()) {
+            return parseArgumentsWindows(args);
+        }
+
+        return parseArgumentsImpl(args);
+    }
+
+    /**
+     * Gotten from org.eclipse.debug.core.DebugPlugin
+     */
+    @SuppressWarnings({ "rawtypes", "unchecked" })
+    private static String[] parseArgumentsImpl(String args) {
+        // man sh, see topic QUOTING
+        List result = new ArrayList();
+
+        final int DEFAULT = 0;
+        final int ARG = 1;
+        final int IN_DOUBLE_QUOTE = 2;
+        final int IN_SINGLE_QUOTE = 3;
+
+        int state = DEFAULT;
+        StringBuffer buf = new StringBuffer();
+        int len = args.length();
+        for (int i = 0; i < len; i++) {
+            char ch = args.charAt(i);
+            if (Character.isWhitespace(ch)) {
+                if (state == DEFAULT) {
+                    // skip
+                    continue;
+                } else if (state == ARG) {
+                    state = DEFAULT;
+                    result.add(buf.toString());
+                    buf.setLength(0);
+                    continue;
+                }
+            }
+            switch (state) {
+                case DEFAULT:
+                case ARG:
+                    if (ch == '"') {
+                        state = IN_DOUBLE_QUOTE;
+                    } else if (ch == '\'') {
+                        state = IN_SINGLE_QUOTE;
+                    } else if (ch == '\\' && i + 1 < len) {
+                        state = ARG;
+                        ch = args.charAt(++i);
+                        buf.append(ch);
+                    } else {
+                        state = ARG;
+                        buf.append(ch);
+                    }
+                    break;
+
+                case IN_DOUBLE_QUOTE:
+                    if (ch == '"') {
+                        state = ARG;
+                    } else if (ch == '\\' && i + 1 < len &&
+                            (args.charAt(i + 1) == '\\' || args.charAt(i + 1) == '"')) {
+                        ch = args.charAt(++i);
+                        buf.append(ch);
+                    } else {
+                        buf.append(ch);
+                    }
+                    break;
+
+                case IN_SINGLE_QUOTE:
+                    if (ch == '\'') {
+                        state = ARG;
+                    } else {
+                        buf.append(ch);
+                    }
+                    break;
+
+                default:
+                    throw new IllegalStateException();
+            }
+        }
+        if (buf.length() > 0 || state != DEFAULT) {
+            result.add(buf.toString());
+        }
+
+        return (String[]) result.toArray(new String[result.size()]);
+    }
+
+    /**
+     * Gotten from org.eclipse.debug.core.DebugPlugin
+     */
+    @SuppressWarnings({ "rawtypes", "unchecked" })
+    private static String[] parseArgumentsWindows(String args) {
+        // see http://msdn.microsoft.com/en-us/library/a1y7w461.aspx
+        List result = new ArrayList();
+
+        final int DEFAULT = 0;
+        final int ARG = 1;
+        final int IN_DOUBLE_QUOTE = 2;
+
+        int state = DEFAULT;
+        int backslashes = 0;
+        StringBuffer buf = new StringBuffer();
+        int len = args.length();
+        for (int i = 0; i < len; i++) {
+            char ch = args.charAt(i);
+            if (ch == '\\') {
+                backslashes++;
+                continue;
+            } else if (backslashes != 0) {
+                if (ch == '"') {
+                    for (; backslashes >= 2; backslashes -= 2) {
+                        buf.append('\\');
+                    }
+                    if (backslashes == 1) {
+                        if (state == DEFAULT) {
+                            state = ARG;
+                        }
+                        buf.append('"');
+                        backslashes = 0;
+                        continue;
+                    } // else fall through to switch
+                } else {
+                    // false alarm, treat passed backslashes literally...
+                    if (state == DEFAULT) {
+                        state = ARG;
+                    }
+                    for (; backslashes > 0; backslashes--) {
+                        buf.append('\\');
+                    }
+                    // fall through to switch
+                }
+            }
+            if (Character.isWhitespace(ch)) {
+                if (state == DEFAULT) {
+                    // skip
+                    continue;
+                } else if (state == ARG) {
+                    state = DEFAULT;
+                    result.add(buf.toString());
+                    buf.setLength(0);
+                    continue;
+                }
+            }
+            switch (state) {
+                case DEFAULT:
+                case ARG:
+                    if (ch == '"') {
+                        state = IN_DOUBLE_QUOTE;
+                    } else {
+                        state = ARG;
+                        buf.append(ch);
+                    }
+                    break;
+
+                case IN_DOUBLE_QUOTE:
+                    if (ch == '"') {
+                        if (i + 1 < len && args.charAt(i + 1) == '"') {
+                            /* Undocumented feature in Windows:
+                             * Two consecutive double quotes inside a double-quoted argument are interpreted as
+                             * a single double quote.
+                             */
+                            buf.append('"');
+                            i++;
+                        } else if (buf.length() == 0) {
+                            // empty string on Windows platform. Account for bug in constructor of JDK's java.lang.ProcessImpl.
+                            result.add("\"\""); //$NON-NLS-1$
+                            state = DEFAULT;
+                        } else {
+                            state = ARG;
+                        }
+                    } else {
+                        buf.append(ch);
+                    }
+                    break;
+
+                default:
+                    throw new IllegalStateException();
+            }
+        }
+        if (buf.length() > 0 || state != DEFAULT) {
+            result.add(buf.toString());
+        }
+
+        return (String[]) result.toArray(new String[result.size()]);
+    }
+
+    public static Map<String, String> getArrayAsMapEnv(String[] mapEnvAsArray) {
+        TreeMap<String, String> map = new TreeMap<>();
+        int length = mapEnvAsArray.length;
+        for (int i = 0; i < length; i++) {
+            String s = mapEnvAsArray[i];
+
+            int iEq = s.indexOf('=');
+            if (iEq != -1) {
+                map.put(s.substring(0, iEq), s.substring(iEq + 1));
+            }
+
+        }
+        return map;
+    }
+
+    public static String[] addOrReplaceEnvVar(String[] mapEnvAsArray, String nameToReplace, String newVal) {
+        int len = mapEnvAsArray.length;
+        nameToReplace += "=";
+        for (int i = 0; i < len; i++) {
+            String string = mapEnvAsArray[i];
+            if (string.startsWith(nameToReplace)) {
+                mapEnvAsArray[i] = nameToReplace + newVal;
+                return mapEnvAsArray;
+            }
+        }
+
+        return StringUtils.addString(mapEnvAsArray, nameToReplace + newVal);
+    }
+
 }

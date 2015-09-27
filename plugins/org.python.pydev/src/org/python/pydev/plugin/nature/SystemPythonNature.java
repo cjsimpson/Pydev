@@ -113,6 +113,11 @@ public class SystemPythonNature extends AbstractPythonNature implements IPythonN
                     "Not implemented: We should use this only for doing path manipulation, "
                             + "which should not happen for the system python nature.");
         }
+
+        @Override
+        public Set<IResource> getProjectSourcePathFolderSet() throws CoreException {
+            throw new RuntimeException("not implemented");
+        }
     }
 
     private final IInterpreterManager manager;
@@ -292,5 +297,10 @@ public class SystemPythonNature extends AbstractPythonNature implements IPythonN
 
     public boolean isOkToUse() {
         return this.manager != null && this.info != null;
+    }
+
+    @Override
+    public Object getAdapter(Class adapter) {
+        return null;
     }
 }

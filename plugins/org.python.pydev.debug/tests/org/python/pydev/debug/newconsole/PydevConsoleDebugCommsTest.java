@@ -21,16 +21,18 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TreeMap;
 
-import junit.framework.Assert;
 import junit.framework.TestCase;
 
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.debug.core.ILaunch;
 import org.eclipse.debug.core.model.IProcess;
+import org.junit.Assert;
 import org.python.pydev.core.TestDependent;
 import org.python.pydev.debug.model.AbstractDebugTarget;
 import org.python.pydev.debug.model.AbstractDebugTargetWithTransmission;
 import org.python.pydev.debug.model.IVariableLocator;
+import org.python.pydev.debug.model.PyStackFrameConsole;
+import org.python.pydev.debug.model.PyThreadConsole;
 import org.python.pydev.debug.model.PyVariable;
 import org.python.pydev.debug.model.PyVariableCollection;
 import org.python.pydev.debug.model.remote.AbstractDebuggerCommand;
@@ -40,16 +42,15 @@ import org.python.pydev.runners.SimpleRunner;
 import org.python.pydev.shared_core.callbacks.ICallback;
 import org.python.pydev.shared_core.io.FileUtils;
 import org.python.pydev.shared_core.net.SocketUtil;
-import org.python.pydev.shared_core.structure.Tuple;
 import org.python.pydev.shared_interactive_console.console.InterpreterResponse;
 
 /**
  * The purpose of this test is to verify the pydevconsole + pydevd works. This
  * test does not try to test the console or debugger itself, just the
  * combination and new code paths that the feature introduces.
- * 
+ *
  * TODO: Iterate over Jython/Python with and without IPython available.
- * 
+ *
  */
 public class PydevConsoleDebugCommsTest extends TestCase {
 
@@ -61,8 +62,8 @@ public class PydevConsoleDebugCommsTest extends TestCase {
 
     @Override
     protected void setUp() throws Exception {
-        String consoleFile = FileUtils.createFileFromParts(TestDependent.TEST_PYDEV_PLUGIN_LOC, "pysrc", "pydevconsole.py")
-                .getAbsolutePath();
+        String consoleFile = FileUtils.createFileFromParts(TestDependent.TEST_PYDEV_PLUGIN_LOC, "pysrc",
+                "pydevconsole.py").getAbsolutePath();
         String pydevdDir = new File(TestDependent.TEST_PYDEV_DEBUG_PLUGIN_LOC, "pysrc").getAbsolutePath();
         Integer[] ports = SocketUtil.findUnusedLocalPorts(2);
         int port = ports[0];
@@ -80,6 +81,7 @@ public class PydevConsoleDebugCommsTest extends TestCase {
         Map<String, String> env = new TreeMap<String, String>();
         env.put("HOME", homeDir.toString());
         env.put("PYTHONPATH", pydevdDir);
+        env.put("PYTHONIOENCODING", "utf-8");
         String sysRoot = System.getenv("SystemRoot");
         if (sysRoot != null) {
             env.put("SystemRoot", sysRoot); //Needed on windows boxes (random/socket. module needs it to work).
@@ -95,10 +97,10 @@ public class PydevConsoleDebugCommsTest extends TestCase {
         }
 
         process = SimpleRunner.createProcess(cmdarray, envp, null);
-        pydevConsoleCommunication = new PydevConsoleCommunication(port, process, clientPort);
+        pydevConsoleCommunication = new PydevConsoleCommunication(port, process, clientPort, cmdarray, envp, "utf-8");
         pydevConsoleCommunication.hello(new NullProgressMonitor());
 
-        ServerSocket socket = new ServerSocket(0);
+        ServerSocket socket = SocketUtil.createLocalServerSocket();
         pydevConsoleCommunication.connectToDebugger(socket.getLocalPort());
         socket.setSoTimeout(5000);
         Socket accept = socket.accept();
@@ -109,13 +111,14 @@ public class PydevConsoleDebugCommsTest extends TestCase {
 
     @Override
     protected void tearDown() throws Exception {
-        if (homeDir.exists()) {
-            FileUtils.deleteDirectoryTree(homeDir);
-        }
         process.destroy();
         pydevConsoleCommunication.close();
         debugTarget.terminate();
 
+        if (homeDir.exists()) {
+            //This must be the last thing: the process will lock this directory.
+            FileUtils.deleteDirectoryTree(homeDir);
+        }
     }
 
     private final class CustomGetFrameCommand extends GetFrameCommand {
@@ -166,8 +169,9 @@ public class PydevConsoleDebugCommsTest extends TestCase {
 
     private void waitUntilNonNull(Object[] object) {
         for (int i = 0; i < 50; i++) {
-            if (object[0] != null)
+            if (object[0] != null) {
                 return;
+            }
             try {
                 Thread.sleep(250);
             } catch (InterruptedException e) {
@@ -185,13 +189,14 @@ public class PydevConsoleDebugCommsTest extends TestCase {
     public void testVersion() throws Exception {
 
         final Boolean passed[] = new Boolean[1];
-        pydevConsoleCommunication.postCommand(new VersionCommand(debugTarget) {
+        debugTarget.postCommand(new VersionCommand(debugTarget) {
             @Override
             public void processOKResponse(int cmdCode, String payload) {
-                if (cmdCode == AbstractDebuggerCommand.CMD_VERSION && "1.1".equals(payload))
+                if (cmdCode == AbstractDebuggerCommand.CMD_VERSION && "@@BUILD_NUMBER@@".equals(payload)) {
                     passed[0] = true;
-                else
+                } else {
                     passed[0] = false;
+                }
             }
 
             @Override
@@ -205,42 +210,55 @@ public class PydevConsoleDebugCommsTest extends TestCase {
 
     }
 
-    private void execInterpreter(String command) {
-        final Boolean done[] = new Boolean[1];
+    private InterpreterResponse execInterpreter(String command) {
+        final InterpreterResponse response[] = new InterpreterResponse[1];
         ICallback<Object, InterpreterResponse> onResponseReceived = new ICallback<Object, InterpreterResponse>() {
 
             public Object call(InterpreterResponse arg) {
-                done[0] = true;
+                response[0] = arg;
                 return null;
             }
         };
-        ICallback<Object, Tuple<String, String>> onContentsReceived = new ICallback<Object, Tuple<String, String>>() {
+        pydevConsoleCommunication.execInterpreter(command, onResponseReceived);
+        waitUntilNonNull(response);
+        return response[0];
+    }
 
-            public Object call(Tuple<String, String> arg) {
-                return null;
-            }
+    /**
+     * #PyDev-502: PyDev 3.9 F2 doesn't support backslash continuations
+     */
+    public void testContinuation() throws Exception {
 
-        };
-        pydevConsoleCommunication.execInterpreter(command, onResponseReceived, onContentsReceived);
-        waitUntilNonNull(done);
+        InterpreterResponse response = execInterpreter("from os import \\\n");
+        assertTrue(response.more);
+        response = execInterpreter("  path,\\\n");
+        assertTrue(response.more);
+        response = execInterpreter("  remove\n");
+        assertTrue(response.more);
+        response = execInterpreter("\n");
     }
 
     /**
      * Test that variables can be seen
      */
     public void testVariable() throws Exception {
-
         execInterpreter("my_var=1");
 
         IVariableLocator frameLocator = new IVariableLocator() {
             public String getPyDBLocation() {
-                return "console_main\t0\tFRAME";
+                // Make a reference to the virtual frame representing the interactive console
+                return PyThreadConsole.VIRTUAL_CONSOLE_ID + "\t" + PyStackFrameConsole.VIRTUAL_FRAME_ID + "\tFRAME";
+            }
+
+            @Override
+            public String getThreadId() {
+                return PyThreadConsole.VIRTUAL_CONSOLE_ID;
             }
         };
 
         final Boolean passed[] = new Boolean[1];
         CustomGetFrameCommand cmd = new CustomGetFrameCommand(passed, debugTarget, frameLocator.getPyDBLocation());
-        pydevConsoleCommunication.postCommand(cmd);
+        debugTarget.postCommand(cmd);
         waitUntilNonNull(passed);
         Assert.assertTrue(passed[0]);
 

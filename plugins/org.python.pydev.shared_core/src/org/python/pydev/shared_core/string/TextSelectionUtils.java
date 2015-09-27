@@ -7,12 +7,17 @@
 package org.python.pydev.shared_core.string;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
 import org.eclipse.jface.text.BadLocationException;
+import org.eclipse.jface.text.DocumentRewriteSession;
+import org.eclipse.jface.text.DocumentRewriteSessionType;
 import org.eclipse.jface.text.FindReplaceDocumentAdapter;
 import org.eclipse.jface.text.IDocument;
+import org.eclipse.jface.text.IDocumentExtension4;
 import org.eclipse.jface.text.IRegion;
 import org.eclipse.jface.text.ITextSelection;
 import org.eclipse.jface.text.Region;
@@ -113,7 +118,7 @@ public class TextSelectionUtils {
 
     /**
      * @return the offset mapping to the end of the line passed as parameter.
-     * @throws BadLocationException 
+     * @throws BadLocationException
      */
     public final int getEndLineOffset(int line) throws BadLocationException {
         IRegion lineInformation = doc.getLineInformation(line);
@@ -171,7 +176,7 @@ public class TextSelectionUtils {
     }
 
     /**
-     * In event of partial selection, used to select the full lines involved. 
+     * In event of partial selection, used to select the full lines involved.
      */
     public void selectCompleteLine() {
         if (doc.getNumberOfLines() == 1) {
@@ -201,7 +206,7 @@ public class TextSelectionUtils {
 
     /**
      * Readjust the selection so that the whole document is selected.
-     * 
+     *
      * @param onlyIfNothingSelected: If false, check if we already have a selection. If we
      * have a selection, it is not changed, however, if it is true, it always selects everything.
      */
@@ -274,6 +279,14 @@ public class TextSelectionUtils {
         return getDoc().getChar(getAbsoluteCursorOffset());
     }
 
+    /**
+     * @return
+     * @throws BadLocationException
+     */
+    public char getCharBeforeCurrentOffset() throws BadLocationException {
+        return getDoc().getChar(getAbsoluteCursorOffset() - 1);
+    }
+
     public static int getAbsoluteCursorOffset(IDocument doc, int line, int col) {
         try {
             IRegion offsetR = doc.getLineInformation(line);
@@ -316,7 +329,7 @@ public class TextSelectionUtils {
 
     /**
      * Gets current line from document.
-     * 
+     *
      * @return String line in String form
      */
     public String getLine() {
@@ -325,7 +338,7 @@ public class TextSelectionUtils {
 
     /**
      * Gets line from document.
-     * 
+     *
      * @param i Line number
      * @return String line in String form
      */
@@ -335,7 +348,7 @@ public class TextSelectionUtils {
 
     /**
      * Gets line from document.
-     * 
+     *
      * @param i Line number
      * @return String line in String form
      */
@@ -443,7 +456,7 @@ public class TextSelectionUtils {
 
     /**
      * Deletes the current selected text
-     * 
+     *
      * @throws BadLocationException
      */
     public void deleteSelection() throws BadLocationException {
@@ -457,7 +470,7 @@ public class TextSelectionUtils {
 
     /**
      * Adds a line to the document.
-     * 
+     *
      * @param doc the document
      * @param endLineDelim the delimiter that should be used
      * @param contents what should be added (the end line delimiter may be added before or after those contents
@@ -530,7 +543,7 @@ public class TextSelectionUtils {
     }
 
     /**
-     * Helpful for having a '|' where the cursor == | and pressing a backspace and deleting both chars. 
+     * Helpful for having a '|' where the cursor == | and pressing a backspace and deleting both chars.
      */
     public Tuple<String, String> getBeforeAndAfterMatchingChars(char c) {
         final int initial = getAbsoluteCursorOffset();
@@ -585,10 +598,10 @@ public class TextSelectionUtils {
 
     /**
      * @return the complete dotted string given the current selection and the strings after
-     * 
+     *
      * e.g.: if we have a text of
-     * 'value = aa.bb.cc()' and 'aa' is selected, this method would return the whole dotted string ('aa.bb.cc') 
-     * @throws BadLocationException 
+     * 'value = aa.bb.cc()' and 'aa' is selected, this method would return the whole dotted string ('aa.bb.cc')
+     * @throws BadLocationException
      */
     public String getFullRepAfterSelection() throws BadLocationException {
         int absoluteCursorOffset = getAbsoluteCursorOffset();
@@ -608,14 +621,15 @@ public class TextSelectionUtils {
 
     /**
      * This function gets the activation token from the document given the current cursor position.
-     * 
+     *
      * @param document this is the document we want info on
      * @param offset this is the cursor position
      * @param getFullQualifier if true we get the full qualifier (even if it passes the current cursor location)
      * @return a tuple with the activation token and the cursor offset (may change if we need to get the full qualifier,
      *         otherwise, it is the same offset passed as a parameter).
      */
-    public static Tuple<String, Integer> extractActivationToken(IDocument document, int offset, boolean getFullQualifier) {
+    public static Tuple<String, Integer> extractActivationToken(IDocument document, int offset,
+            boolean getFullQualifier) {
         try {
             if (getFullQualifier) {
                 //if we have to get the full qualifier, we'll have to walk the offset (cursor) forward
@@ -631,8 +645,7 @@ public class TextSelectionUtils {
             }
             int i = offset;
 
-            if (i > document.getLength())
-            {
+            if (i > document.getLength()) {
                 return new Tuple<String, Integer>("", document.getLength()); //$NON-NLS-1$
             }
 
@@ -742,6 +755,10 @@ public class TextSelectionUtils {
         return offset + getFirstCharRelativePosition(doc, cursorOffset);
     }
 
+    public int getFirstCharPositionInCurrentCursorOffset() throws BadLocationException {
+        return getFirstCharPosition(getDoc(), getAbsoluteCursorOffset());
+    }
+
     /**
      * @param offset
      * @return
@@ -794,8 +811,7 @@ public class TextSelectionUtils {
         int offset = getAbsoluteCursorOffset();
         int i = offset;
 
-        if (i > doc.getLength())
-        {
+        if (i > doc.getLength()) {
             return new Tuple<String, Integer>("", doc.getLength()); //$NON-NLS-1$
         }
 
@@ -827,7 +843,7 @@ public class TextSelectionUtils {
 
     /**
      * This function replaces all the contents in the current line before the cursor for the contents passed
-     * as parameter 
+     * as parameter
      */
     public void replaceLineContentsToSelection(String newContents) throws BadLocationException {
         int lineOfOffset = getDoc().getLineOfOffset(getAbsoluteCursorOffset());
@@ -958,7 +974,7 @@ public class TextSelectionUtils {
 
     /**
      * @param offset the offset we want info on
-     * @return a tuple with the line, col of the passed offset in the document 
+     * @return a tuple with the line, col of the passed offset in the document
      */
     public Tuple<Integer, Integer> getLineAndCol(int offset) {
         try {
@@ -972,7 +988,7 @@ public class TextSelectionUtils {
     }
 
     /**
-     * @return the contents from the document starting at the cursor line until a colon is reached. 
+     * @return the contents from the document starting at the cursor line until a colon is reached.
      */
     public String getToColon() {
         FastStringBuffer buffer = new FastStringBuffer();
@@ -1084,9 +1100,9 @@ public class TextSelectionUtils {
             char c = doc.getChar(i);
             if (!Character.isJavaIdentifierPart(c) && c != '.') {
                 //We're at the start now, so, let's go onwards now...
-                if (org.python.pydev.shared_core.string.StringUtils.isClosingPeer(c)) {
+                if (StringUtils.isClosingPeer(c)) {
                     int j = pairMatcher.searchForOpeningPeer(i,
-                            org.python.pydev.shared_core.string.StringUtils.getPeer(c), c, doc);
+                            StringUtils.getPeer(c), c, doc);
                     if (j < 0) {
                         break;
                     }
@@ -1103,9 +1119,9 @@ public class TextSelectionUtils {
         for (int i = absoluteCursorOffset; i < len; i++) {
             char c = doc.getChar(i);
             if (!Character.isJavaIdentifierPart(c) && c != '.') {
-                if (org.python.pydev.shared_core.string.StringUtils.isOpeningPeer(c)) {
+                if (StringUtils.isOpeningPeer(c)) {
                     int j = pairMatcher.searchForClosingPeer(i, c,
-                            org.python.pydev.shared_core.string.StringUtils.getPeer(c), doc);
+                            StringUtils.getPeer(c), doc);
                     if (j < 0) {
                         break;
                     }
@@ -1124,4 +1140,82 @@ public class TextSelectionUtils {
         return new Tuple<String, Integer>("", absoluteCursorOffset);
     }
 
+    /**
+     * Stop a rewrite session
+     */
+    public static void endWrite(IDocument doc, DocumentRewriteSession session) {
+        if (doc instanceof IDocumentExtension4 && session != null) {
+            IDocumentExtension4 d = (IDocumentExtension4) doc;
+            d.stopRewriteSession(session);
+        }
+    }
+
+    /**
+     * Starts a rewrite session (keep things in a single undo/redo)
+     */
+    public static DocumentRewriteSession startWrite(IDocument doc) {
+        if (doc instanceof IDocumentExtension4) {
+            IDocumentExtension4 d = (IDocumentExtension4) doc;
+            return d.startRewriteSession(DocumentRewriteSessionType.UNRESTRICTED);
+        }
+        return null;
+    }
+
+    /**
+     * Performs a simple sort without taking into account the actual contents of the selection (aside from lines
+     * ending with '\' which are considered as a single line).
+     * 
+     * @param doc the document to be sorted
+     * @param startLine the first line where the sort should happen
+     * @param endLine the last line where the sort should happen
+     */
+    public void performSimpleSort(IDocument doc, int startLine, int endLine) {
+        String endLineDelim = this.getEndLineDelim();
+        try {
+            ArrayList<String> list = new ArrayList<String>();
+
+            StringBuffer lastLine = null;
+            for (int i = startLine; i <= endLine; i++) {
+
+                String line = getLine(doc, i);
+
+                if (lastLine != null) {
+                    int len = lastLine.length();
+                    if (len > 0 && lastLine.charAt(len - 1) == '\\') {
+                        lastLine.append(endLineDelim);
+                        lastLine.append(line);
+                    } else {
+                        list.add(lastLine.toString());
+                        lastLine = new StringBuffer(line);
+                    }
+                } else {
+                    lastLine = new StringBuffer(line);
+                }
+            }
+
+            if (lastLine != null) {
+                list.add(lastLine.toString());
+            }
+
+            Collections.sort(list);
+            StringBuffer all = new StringBuffer();
+            for (Iterator<String> iter = list.iterator(); iter.hasNext();) {
+                String element = iter.next();
+                all.append(element);
+                if (iter.hasNext()) {
+                    all.append(endLineDelim);
+                }
+            }
+
+            int length = doc.getLineInformation(endLine).getLength();
+            int endOffset = doc.getLineInformation(endLine).getOffset() + length;
+            int startOffset = doc.getLineInformation(startLine).getOffset();
+
+            doc.replace(startOffset, endOffset - startOffset, all.toString());
+
+        } catch (BadLocationException e) {
+            Log.log(e);
+        }
+
+    }
 }

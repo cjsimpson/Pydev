@@ -1,3 +1,15 @@
+/******************************************************************************
+* Copyright (C) 2013  Jonah Graham and others
+*
+* All rights reserved. This program and the accompanying materials
+* are made available under the terms of the Eclipse Public License v1.0
+* which accompanies this distribution, and is available at
+* http://www.eclipse.org/legal/epl-v10.html
+*
+* Contributors:
+*     Jonah Graham <jonah@kichwacoders.com> - initial API and implementation
+*     Fabio Zadrozny <fabiofz@gmail.com>    - ongoing maintenance
+******************************************************************************/
 package org.python.pydev.debug.newconsole.prefs;
 
 import org.eclipse.jface.dialogs.IInputValidator;
@@ -10,10 +22,10 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.List;
 import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchPreferencePage;
-import org.python.pydev.core.docutils.StringUtils;
 import org.python.pydev.debug.core.PydevDebugPlugin;
 import org.python.pydev.debug.newconsole.PydevConsoleConstants;
-import org.python.pydev.utils.LabelFieldEditor;
+import org.python.pydev.shared_core.string.StringUtils;
+import org.python.pydev.shared_ui.field_editors.LabelFieldEditor;
 
 public class InteractiveConsoleUMDPrefs extends FieldEditorPreferencePage implements IWorkbenchPreferencePage {
 

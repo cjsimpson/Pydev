@@ -28,7 +28,6 @@ import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.Document;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.contentassist.ICompletionProposal;
-import org.python.pydev.core.FileUtilsFileBuffer;
 import org.python.pydev.core.IInterpreterInfo;
 import org.python.pydev.core.IInterpreterManager;
 import org.python.pydev.core.IPythonNature;
@@ -42,6 +41,7 @@ import org.python.pydev.plugin.PydevTestUtils;
 import org.python.pydev.plugin.nature.PythonNature;
 import org.python.pydev.shared_core.io.FileUtils;
 import org.python.pydev.shared_core.string.FastStringBuffer;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.ui.BundleInfoStub;
 import org.python.pydev.ui.interpreters.PythonInterpreterManager;
 import org.python.pydev.ui.pythonpathconf.InterpreterInfo;
@@ -111,36 +111,46 @@ public class CodeCompletionTestsBase extends TestCase {
     /*
      * @see TestCase#setUp()
      */
+    @Override
     public void setUp() throws Exception {
         super.setUp();
         PydevPlugin.setBundleInfo(new BundleInfoStub());
         ProjectModulesManager.IN_TESTS = true;
-        FileUtilsFileBuffer.IN_TESTS = true;
+        FileUtils.IN_TESTS = true;
         PydevTestUtils.setTestPlatformStateLocation();
     }
 
     /*
      * @see TestCase#tearDown()
      */
+    @Override
     public void tearDown() throws Exception {
         super.tearDown();
         PydevPlugin.setBundleInfo(null);
         ProjectModulesManager.IN_TESTS = false;
-        FileUtilsFileBuffer.IN_TESTS = false;
+        FileUtils.IN_TESTS = false;
     }
 
     /**
      * Backwards-compatibility interface
      */
     protected boolean restoreProjectPythonPath(boolean force, String path) {
-        return restoreProjectPythonPath(force, path, "testProjectStub");
+        return restoreProjectPythonPath(force, path, getNameToCacheNature());
     }
 
     /**
      * Backwards-compatibility interface
      */
     protected boolean restoreProjectPythonPath2(boolean force, String path) {
-        return restoreProjectPythonPath2(force, path, "testProjectStub2");
+        return restoreProjectPythonPath2(force, path, getNameToCacheNature2());
+    }
+
+    protected String getNameToCacheNature() {
+        return "testProjectStub";
+    }
+
+    protected String getNameToCacheNature2() {
+        return "testProjectStub2";
     }
 
     /**
@@ -369,9 +379,21 @@ public class CodeCompletionTestsBase extends TestCase {
      */
     public void restorePythonPath(String path, boolean force) {
         restoreSystemPythonPath(force, path);
-        restoreProjectPythonPath(force, TestDependent.TEST_PYSRC_LOC);
-        restoreProjectPythonPath2(force, TestDependent.TEST_PYSRC_LOC2);
+        restoreProjectPythonPath(force, getProjectPythonpath());
+        restoreProjectPythonPath2(force, getProjectPythonpathNature2());
         checkSize();
+    }
+
+    public String getProjectPythonpathNature2() {
+        return TestDependent.TEST_PYSRC_LOC2;
+    }
+
+    /**
+     * Note: subclasses may return a string with '|' as a separator. That way the source folder will be the first and the
+     * remainders will be set as external source folders.
+     */
+    public String getProjectPythonpath() {
+        return TestDependent.TEST_PYSRC_LOC;
     }
 
     /**
@@ -381,8 +403,8 @@ public class CodeCompletionTestsBase extends TestCase {
      */
     public void restorePythonPathWithSitePackages(boolean force) {
         restoreSystemPythonPath(force, TestDependent.GetCompletePythonLib(true));
-        restoreProjectPythonPath(force, TestDependent.TEST_PYSRC_LOC);
-        restoreProjectPythonPath2(force, TestDependent.TEST_PYSRC_LOC2);
+        restoreProjectPythonPath(force, getProjectPythonpath());
+        restoreProjectPythonPath2(force, getProjectPythonpathNature2());
         checkSize();
     }
 
@@ -399,8 +421,8 @@ public class CodeCompletionTestsBase extends TestCase {
         if (DEBUG_TESTS_BASE) {
             System.out.println("-------------- Restoring project pythonpath");
         }
-        restoreProjectPythonPath(force, TestDependent.TEST_PYSRC_LOC);
-        restoreProjectPythonPath2(force, TestDependent.TEST_PYSRC_LOC2);
+        restoreProjectPythonPath(force, getProjectPythonpath());
+        restoreProjectPythonPath2(force, getProjectPythonpathNature2());
         if (DEBUG_TESTS_BASE) {
             System.out.println("-------------- Checking size (for proj1 and proj2)");
         }
@@ -416,8 +438,8 @@ public class CodeCompletionTestsBase extends TestCase {
         if (DEBUG_TESTS_BASE) {
             System.out.println("-------------- Restoring project pythonpath");
         }
-        restoreProjectPythonPath(force, TestDependent.TEST_PYSRC_LOC);
-        restoreProjectPythonPath2(force, TestDependent.TEST_PYSRC_LOC2);
+        restoreProjectPythonPath(force, getProjectPythonpath());
+        restoreProjectPythonPath2(force, getProjectPythonpathNature2());
         if (DEBUG_TESTS_BASE) {
             System.out.println("-------------- Checking size (for proj1 and proj2)");
         }
@@ -495,8 +517,9 @@ public class CodeCompletionTestsBase extends TestCase {
      */
     public ICompletionProposal[] requestCompl(File file, String strDoc, int documentOffset, int returned,
             String[] retCompl, PythonNature nature) throws Exception, MisconfigurationException {
-        if (documentOffset == -1)
+        if (documentOffset == -1) {
             documentOffset = strDoc.length();
+        }
 
         IDocument doc = new Document(strDoc);
         CompletionRequest request = new CompletionRequest(file, nature, doc, documentOffset, codeCompletion);
@@ -609,7 +632,8 @@ public class CodeCompletionTestsBase extends TestCase {
             available.append(o.toString());
             available.append('\n');
         }
-        fail(org.python.pydev.shared_core.string.StringUtils.format("Object: %s not found. Available:\n%s", toFind, available));
+        fail(StringUtils.format("Object: %s not found. Available:\n%s", toFind,
+                available));
     }
 
 }

@@ -33,10 +33,11 @@ import org.python.pydev.debug.model.remote.GetFrameCommand;
 import org.python.pydev.debug.model.remote.GetVariableCommand;
 import org.python.pydev.debug.model.remote.ICommandResponseListener;
 import org.python.pydev.editorinput.PySourceLocatorPrefs;
+import org.python.pydev.shared_core.string.StringUtils;
 
 /**
  * Represents a stack entry.
- * 
+ *
  * Needs to integrate with the source locator
  */
 public class PyStackFrame extends PlatformObject implements IStackFrame, IVariableLocator, IPyStackFrame {
@@ -65,20 +66,36 @@ public class PyStackFrame extends PlatformObject implements IStackFrame, IVariab
             public String getPyDBLocation() {
                 return thread.getId() + "\t" + id + "\tLOCAL";
             }
+
+            public String getThreadId() {
+                return thread.getId();
+            }
         };
         frameLocator = new IVariableLocator() {
             public String getPyDBLocation() {
                 return thread.getId() + "\t" + id + "\tFRAME";
+            }
+
+            public String getThreadId() {
+                return thread.getId();
             }
         };
         globalsLocator = new IVariableLocator() {
             public String getPyDBLocation() {
                 return thread.getId() + "\t" + id + "\tGLOBAL";
             }
+
+            public String getThreadId() {
+                return thread.getId();
+            }
         };
         expressionLocator = new IVariableLocator() {
             public String getPyDBLocation() {
                 return thread.getId() + "\t" + id + "\tEXPRESSION";
+            }
+
+            public String getThreadId() {
+                return thread.getId();
             }
         };
         this.target = target;
@@ -141,10 +158,10 @@ public class PyStackFrame extends PlatformObject implements IStackFrame, IVariab
 
     /**
      * This interface changed in 3.2... we returned an empty collection before, and used the
-     * DeferredWorkbenchAdapter to get the actual children, but now we have to use the 
+     * DeferredWorkbenchAdapter to get the actual children, but now we have to use the
      * DeferredWorkbenchAdapter from here, as it is not called in that other interface
      * anymore.
-     * 
+     *
      * @see org.eclipse.debug.core.model.IStackFrame#getVariables()
      */
     public IVariable[] getVariables() throws DebugException {
@@ -188,7 +205,10 @@ public class PyStackFrame extends PlatformObject implements IStackFrame, IVariab
         this.onAskGetNewVars = true;
         AbstractDebugTarget target = getTarget();
         if (target != null) {
-            target.fireEvent(new DebugEvent(this, DebugEvent.CHANGE, DebugEvent.CONTENT));
+            // I.e.: if we do a new DebugEvent(this, DebugEvent.CHANGE, DebugEvent.CONTENT), the selection
+            // of the editor is redone (thus, if the user uses F2 it'd get back to the current breakpoint
+            // location because it'd be reselected).
+            target.fireEvent(new DebugEvent(this, DebugEvent.CHANGE, DebugEvent.UNSPECIFIED));
         }
     }
 
@@ -196,6 +216,9 @@ public class PyStackFrame extends PlatformObject implements IStackFrame, IVariab
         return true;
     }
 
+    /**
+     * Note: line 1-based.
+     */
     public int getLineNumber() throws DebugException {
         return line;
     }
@@ -208,8 +231,18 @@ public class PyStackFrame extends PlatformObject implements IStackFrame, IVariab
         return -1;
     }
 
+    private boolean currentStackFrame = false;
+
+    public void setCurrentStackFrame() {
+        this.currentStackFrame = true;
+    }
+
     public String getName() throws DebugException {
-        return name + " [" + path.lastSegment() + ":" + Integer.toString(line) + "]";
+        String ret = StringUtils.join("", name, " [", path.lastSegment(), ":", Integer.toString(line), "]");
+        if (currentStackFrame) {
+            ret += "   <-- Current frame";
+        }
+        return ret;
     }
 
     public IRegisterGroup[] getRegisterGroups() throws DebugException {
@@ -292,6 +325,7 @@ public class PyStackFrame extends PlatformObject implements IStackFrame, IVariab
         thread.terminate();
     }
 
+    @Override
     public Object getAdapter(Class adapter) {
         AdapterDebug.print(this, adapter);
 
@@ -329,6 +363,7 @@ public class PyStackFrame extends PlatformObject implements IStackFrame, IVariab
      * fixed - this was bug http://sourceforge.net/tracker/index.php?func=detail&aid=1174821&group_id=85796&atid=577329
      * in the forum (unable to get stack correctly when recursing)
      */
+    @Override
     public int hashCode() {
         return id.hashCode();
     }
@@ -337,6 +372,7 @@ public class PyStackFrame extends PlatformObject implements IStackFrame, IVariab
      * fixed - this was bug http://sourceforge.net/tracker/index.php?func=detail&aid=1174821&group_id=85796&atid=577329
      * in the forum (unable to get stack correctly when recursing)
      */
+    @Override
     public boolean equals(Object obj) {
         if (obj instanceof PyStackFrame) {
             PyStackFrame sf = (PyStackFrame) obj;

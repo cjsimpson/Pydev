@@ -13,7 +13,6 @@ package org.python.pydev.builder;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +25,7 @@ import org.eclipse.core.resources.IResourceDelta;
 import org.eclipse.core.resources.IncrementalProjectBuilder;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.jobs.ISchedulingRule;
 import org.eclipse.jface.text.IDocument;
 import org.python.pydev.builder.pycremover.PycHandlerBuilderVisitor;
 import org.python.pydev.builder.pylint.PyLintVisitor;
@@ -45,7 +45,7 @@ import org.python.pydev.utils.PyFileListing;
 
 /**
  * This builder only passes through python files
- * 
+ *
  * @author Fabio Zadrozny
  */
 public class PyDevBuilder extends IncrementalProjectBuilder {
@@ -53,7 +53,7 @@ public class PyDevBuilder extends IncrementalProjectBuilder {
     private static final boolean DEBUG = false;
 
     /**
-     * 
+     *
      * @return a list of visitors for building the application.
      */
     public List<PyDevBuilderVisitor> getVisitors() {
@@ -69,8 +69,20 @@ public class PyDevBuilder extends IncrementalProjectBuilder {
     }
 
     /**
+     * Marking that no locking should be done during the build.
+     */
+    public ISchedulingRule getRule() {
+        return null;
+    }
+
+    @Override
+    public ISchedulingRule getRule(int kind, Map<String, String> args) {
+        return null;
+    }
+
+    /**
      * Builds the project.
-     * 
+     *
      * @see org.eclipse.core.internal.events InternalBuilder#build(int, java.util.Map, org.eclipse.core.runtime.IProgressMonitor)
      */
     @Override
@@ -82,7 +94,9 @@ public class PyDevBuilder extends IncrementalProjectBuilder {
 
         if (kind == IncrementalProjectBuilder.FULL_BUILD || kind == IncrementalProjectBuilder.CLEAN_BUILD) {
             // Do a Full Build: Use a ResourceVisitor to process the tree.
+            //Timer timer = new Timer();
             performFullBuild(monitor);
+            //timer.printDiff("Total time for analysis of: " + getProject());
 
         } else {
             // Build it with a delta
@@ -93,7 +107,7 @@ public class PyDevBuilder extends IncrementalProjectBuilder {
                 performFullBuild(monitor);
 
             } else {
-                HashMap<String, Object> memo = new HashMap<String, Object>();
+                VisitorMemo memo = new VisitorMemo();
                 memo.put(PyDevBuilderVisitor.IS_FULL_BUILD, false); //mark it as delta build
 
                 // ok, we have a delta
@@ -111,15 +125,19 @@ public class PyDevBuilder extends IncrementalProjectBuilder {
                         counterVisitor.getNVisited());
                 grouperVisitor.memo = memo;
 
-                notifyVisitingWillStart(visitors, monitor, false, null);
-                try {
+                try (AutoCloseable closeable = withStartEndVisitingNotifications(visitors, monitor, false, null)) {
                     try {
                         delta.accept(grouperVisitor);
                     } catch (Exception e) {
                         Log.log(e);
                     }
-                } finally {
-                    notifyVisitingEnded(visitors, monitor);
+                    try {
+                        grouperVisitor.finishDelayedVisits();
+                    } catch (Exception e) {
+                        Log.log(e);
+                    }
+                } catch (Exception e1) {
+                    Log.log(e1);
                 }
             }
         }
@@ -128,7 +146,7 @@ public class PyDevBuilder extends IncrementalProjectBuilder {
 
     /**
      * Processes all python files.
-     * 
+     *
      * @param monitor
      */
     private void performFullBuild(IProgressMonitor monitor) throws CoreException {
@@ -148,49 +166,51 @@ public class PyDevBuilder extends IncrementalProjectBuilder {
                     List<IFile> resourcesToParse = new ArrayList<IFile>();
 
                     List<PyDevBuilderVisitor> visitors = getVisitors();
-                    notifyVisitingWillStart(visitors, monitor, true, nature);
+                    try (AutoCloseable closable = withStartEndVisitingNotifications(visitors, monitor, true, nature)) {
+                        monitor.beginTask("Building...", (visitors.size() * 100) + 30);
 
-                    monitor.beginTask("Building...", (visitors.size() * 100) + 30);
+                        IResource[] members = project.members();
 
-                    IResource[] members = project.members();
+                        if (members != null) {
+                            // get all the python files to get information.
+                            int len = members.length;
+                            for (int i = 0; i < len; i++) {
+                                try {
+                                    IResource member = members[i];
+                                    if (member == null) {
+                                        continue;
+                                    }
 
-                    if (members != null) {
-                        // get all the python files to get information.
-                        for (int i = 0; i < members.length; i++) {
-                            try {
-                                IResource member = members[i];
-                                if (member == null) {
-                                    continue;
-                                }
+                                    if (member.getType() == IResource.FILE) {
+                                        addToResourcesToParse(resourcesToParse, (IFile) member, nature);
 
-                                if (member.getType() == IResource.FILE) {
-                                    addToResourcesToParse(resourcesToParse, (IFile) member, nature);
+                                    } else if (member.getType() == IResource.FOLDER) {
+                                        //if it is a folder, let's get all python files that are beneath it
+                                        //the heuristics to know if we have to analyze them are the same we have
+                                        //for a single file
+                                        List<IFile> files = PyFileListing.getAllIFilesBelow((IFolder) member);
 
-                                } else if (member.getType() == IResource.FOLDER) {
-                                    //if it is a folder, let's get all python files that are beneath it
-                                    //the heuristics to know if we have to analyze them are the same we have
-                                    //for a single file
-                                    List<IFile> l = PyFileListing.getAllIFilesBelow((IFolder) member);
-
-                                    for (Iterator<IFile> iter = l.iterator(); iter.hasNext();) {
-                                        IFile element = iter.next();
-                                        if (element != null) {
-                                            addToResourcesToParse(resourcesToParse, element, nature);
+                                        for (IFile file : files) {
+                                            if (file != null) {
+                                                addToResourcesToParse(resourcesToParse, file, nature);
+                                            }
+                                        }
+                                    } else {
+                                        if (DEBUG) {
+                                            System.out.println("Unknown type: " + member.getType());
                                         }
                                     }
-                                } else {
-                                    if (DEBUG) {
-                                        System.out.println("Unknown type: " + member.getType());
-                                    }
+                                } catch (Exception e) {
+                                    // that's ok...
                                 }
-                            } catch (Exception e) {
-                                // that's ok...
                             }
+                            monitor.worked(30);
+                            buildResources(resourcesToParse, monitor, visitors);
                         }
-                        monitor.worked(30);
-                        buildResources(resourcesToParse, monitor, visitors);
+                    } catch (Exception e1) {
+                        Log.log(e1);
                     }
-                    notifyVisitingEnded(visitors, monitor);
+
                 } finally {
                     nature.endRequests();
                 }
@@ -200,25 +220,28 @@ public class PyDevBuilder extends IncrementalProjectBuilder {
 
     }
 
-    private void notifyVisitingWillStart(List<PyDevBuilderVisitor> visitors, IProgressMonitor monitor,
+    private AutoCloseable withStartEndVisitingNotifications(final List<PyDevBuilderVisitor> visitors,
+            final IProgressMonitor monitor,
             boolean isFullBuild, IPythonNature nature) {
         for (PyDevBuilderVisitor visitor : visitors) {
             try {
                 visitor.visitingWillStart(monitor, isFullBuild, nature);
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 Log.log(e);
             }
         }
-    }
-
-    private void notifyVisitingEnded(List<PyDevBuilderVisitor> visitors, IProgressMonitor monitor) {
-        for (PyDevBuilderVisitor visitor : visitors) {
-            try {
-                visitor.visitingEnded(monitor);
-            } catch (Exception e) {
-                Log.log(e);
+        return new AutoCloseable() {
+            @Override
+            public void close() throws Exception {
+                for (PyDevBuilderVisitor visitor : visitors) {
+                    try {
+                        visitor.visitingEnded(monitor);
+                    } catch (Throwable e) {
+                        Log.log(e);
+                    }
+                }
             }
-        }
+        };
     }
 
     /**
@@ -227,7 +250,7 @@ public class PyDevBuilder extends IncrementalProjectBuilder {
      * @param nature the nature associated to the resource
      */
     private void addToResourcesToParse(List<IFile> resourcesToParse, IFile member, IPythonNature nature) {
-        //analyze it only if it is a valid source file 
+        //analyze it only if it is a valid source file
         String fileExtension = member.getFileExtension();
         if (DEBUG) {
             System.out.println("Checking name:'" + member.getName() + "' projPath:'" + member.getProjectRelativePath()
@@ -245,7 +268,7 @@ public class PyDevBuilder extends IncrementalProjectBuilder {
 
     /**
      * Default implementation. Visits each resource once at a time. May be overridden if a better implementation is needed.
-     * 
+     *
      * @param resourcesToParse list of resources from project that are python files.
      * @param monitor
      * @param visitors
@@ -263,6 +286,9 @@ public class PyDevBuilder extends IncrementalProjectBuilder {
         FastStringBuffer bufferToCreateString = new FastStringBuffer();
 
         boolean loggedMisconfiguration = false;
+        long lastProgressTime = 0;
+
+        Object memoSharedProjectState = null;
         for (Iterator<IFile> iter = resourcesToParse.iterator(); iter.hasNext() && monitor.isCanceled() == false;) {
             i += 1;
             total += inc;
@@ -294,7 +320,8 @@ public class PyDevBuilder extends IncrementalProjectBuilder {
                 }
 
                 //create new memo for each resource
-                HashMap<String, Object> memo = new HashMap<String, Object>();
+                VisitorMemo memo = new VisitorMemo();
+                memo.setSharedProjectState(memoSharedProjectState);
                 memo.put(PyDevBuilderVisitor.IS_FULL_BUILD, true); //mark it as full build
 
                 ICallback0<IDocument> doc = FileUtilsFileBuffer.getDocOnCallbackFromResource(r);
@@ -309,7 +336,11 @@ public class PyDevBuilder extends IncrementalProjectBuilder {
                         PyDevBuilderVisitor visitor = it.next();
                         visitor.memo = memo; //setting the memo must be the first thing.
 
-                        communicateProgress(monitor, totalResources, i, r, visitor, bufferToCreateString);
+                        long currentTimeMillis = System.currentTimeMillis();
+                        if (currentTimeMillis - lastProgressTime > 300) {
+                            communicateProgress(monitor, totalResources, i, r, visitor, bufferToCreateString);
+                            lastProgressTime = currentTimeMillis;
+                        }
 
                         //on a full build, all visits are as some add...
                         visitor.visitAddedResource(r, doc, monitor);
@@ -322,6 +353,7 @@ public class PyDevBuilder extends IncrementalProjectBuilder {
                     monitor.worked((int) total);
                     total -= (int) total;
                 }
+                memoSharedProjectState = memo.getSharedProjectState();
             } finally {
                 nature.endRequests();
             }
@@ -330,7 +362,7 @@ public class PyDevBuilder extends IncrementalProjectBuilder {
 
     /**
      * Used so that we can communicate the progress to the user
-     * 
+     *
      * @param bufferToCreateString: this is a buffer that's emptied and used to create the string to be shown to the
      * user with the progress.
      */

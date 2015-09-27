@@ -10,14 +10,16 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 
+import org.python.pydev.core.log.Log;
 import org.python.pydev.shared_core.io.ThreadStreamReader;
+import org.python.pydev.shared_core.string.StringUtils;
 
 public class ProcessCreationInfo {
 
     public final String[] parameters;
     public final String[] envp;
     public final File workingDir;
-    public final Process process;
+    private final Process process;
 
     private ThreadStreamReader stdReader;
     private ThreadStreamReader errReader;
@@ -49,11 +51,11 @@ public class ProcessCreationInfo {
 
     public String getProcessLog() {
 
-        String joinedParams = org.python.pydev.shared_core.string.StringUtils.join(" ", parameters);
+        String joinedParams = StringUtils.join(" ", parameters);
 
         String environment = "EMPTY ENVIRONMENT";
         if (envp != null) {
-            environment = org.python.pydev.shared_core.string.StringUtils.join("\n", envp);
+            environment = StringUtils.join("\n", envp);
         }
 
         String workDir = "NULL WORK DIR";
@@ -74,7 +76,50 @@ public class ProcessCreationInfo {
                 environment, "\n\n - Working Dir:\n", workDir, "\n\n - OS:\n", osName, "\n\n - Std output:\n",
                 stdContents, "\n\n - Err output:\n", errContents };
 
-        return org.python.pydev.shared_core.string.StringUtils.join("", splitted);
+        return StringUtils.join("", splitted);
+    }
+
+    public String getAndClearContents() {
+        String stdContents = stdReader.getContents();
+        String errContents = errReader.getContents();
+
+        return StringUtils.join("", "STDOUT: ", stdContents, "\nESTDERR: ", errContents, "\n");
+    }
+
+    private void stopGettingOutput() {
+        if (stdReader != null) {
+            stdReader.stopGettingOutput();
+        }
+        stdReader = null;
+        if (errReader != null) {
+            errReader.stopGettingOutput();
+        }
+        errReader = null;
+    }
+
+    public void destroy() {
+        stopGettingOutput();
+        try {
+            this.process.destroy();
+        } catch (Exception e) {
+            Log.log(e);
+        }
+    }
+
+    public int exitValue() {
+        return this.process.exitValue();
+    }
+
+    /**
+     * Use to clear contents so that we don't become a heap sink!
+     */
+    public void clearOutput() {
+        if (this.stdReader != null) {
+            this.stdReader.clearContents();
+        }
+        if (this.errReader != null) {
+            this.errReader.clearContents();
+        }
     }
 
 }

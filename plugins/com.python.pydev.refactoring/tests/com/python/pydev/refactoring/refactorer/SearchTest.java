@@ -7,6 +7,7 @@
 package com.python.pydev.refactoring.refactorer;
 
 import java.io.File;
+import java.util.List;
 
 import org.eclipse.jface.text.Document;
 import org.eclipse.jface.text.IDocument;
@@ -18,7 +19,10 @@ import org.python.pydev.editor.refactoring.RefactoringRequest;
 import org.python.pydev.shared_core.io.FileUtils;
 import org.python.pydev.shared_core.utils.PlatformUtils;
 
+import com.python.pydev.analysis.additionalinfo.AbstractAdditionalTokensInfo;
 import com.python.pydev.analysis.additionalinfo.AdditionalInfoTestsBase;
+import com.python.pydev.analysis.additionalinfo.AdditionalProjectInterpreterInfo;
+import com.python.pydev.analysis.additionalinfo.IInfo;
 
 public class SearchTest extends AdditionalInfoTestsBase {
 
@@ -38,6 +42,7 @@ public class SearchTest extends AdditionalInfoTestsBase {
 
     private Refactorer refactorer;
 
+    @Override
     public void setUp() throws Exception {
         super.setUp();
         CompiledModule.COMPILED_MODULES_ENABLED = true;
@@ -364,6 +369,10 @@ public class SearchTest extends AdditionalInfoTestsBase {
         //                print aa.static1() - line 4
         //                print aa.static2()        
 
+        List<IInfo> tokens = AdditionalProjectInterpreterInfo.getTokensEqualTo("static1", nature,
+                AbstractAdditionalTokensInfo.TOP_LEVEL | AbstractAdditionalTokensInfo.INNER);
+        assertEquals(1, tokens.size()); //if this fails, the cache is outdated (i.e.: delete AdditionalProjectInterpreterInfo.pydevinfo)
+
         String line = "print aa.static1()";
         final File file = new File(TestDependent.TEST_PYSRC_LOC + "extendable/parameters.py");
         RefactoringRequest refactoringRequest = createRefactoringRequest(line, file);
@@ -437,7 +446,7 @@ public class SearchTest extends AdditionalInfoTestsBase {
         RefactoringRequest refactoringRequest = createRefactoringRequest(line, file);
         refactoringRequest.ps = new PySelection(refactoringRequest.getDoc(), 3, line.length() - "1(self):".length()); //find the 'static1' method itself
 
-        refactoringRequest.setAdditionalInfo(AstEntryRefactorerRequestConstants.FIND_DEFINITION_IN_ADDITIONAL_INFO,
+        refactoringRequest.setAdditionalInfo(RefactoringRequest.FIND_DEFINITION_IN_ADDITIONAL_INFO,
                 false);
         ItemPointer[] pointers = refactorer.findDefinition(refactoringRequest);
 
@@ -464,7 +473,7 @@ public class SearchTest extends AdditionalInfoTestsBase {
         refactoringRequest.ps = new PySelection(refactoringRequest.getDoc(), 0, line.length()
                 - "Static(object):".length()); //find the 'TestStatic' class itself
 
-        refactoringRequest.setAdditionalInfo(AstEntryRefactorerRequestConstants.FIND_DEFINITION_IN_ADDITIONAL_INFO,
+        refactoringRequest.setAdditionalInfo(RefactoringRequest.FIND_DEFINITION_IN_ADDITIONAL_INFO,
                 false);
         ItemPointer[] pointers = refactorer.findDefinition(refactoringRequest);
 
@@ -481,7 +490,7 @@ public class SearchTest extends AdditionalInfoTestsBase {
 
         RefactoringRequest refactoringRequest = createRefactoringRequest(new Document(str), "foo", 1, 9);
 
-        refactoringRequest.setAdditionalInfo(AstEntryRefactorerRequestConstants.FIND_DEFINITION_IN_ADDITIONAL_INFO,
+        refactoringRequest.setAdditionalInfo(RefactoringRequest.FIND_DEFINITION_IN_ADDITIONAL_INFO,
                 false);
         ItemPointer[] pointers = refactorer.findDefinition(refactoringRequest);
 
@@ -495,7 +504,7 @@ public class SearchTest extends AdditionalInfoTestsBase {
 
         RefactoringRequest refactoringRequest = createRefactoringRequest(new Document(str), "foo", 1, 9);
 
-        refactoringRequest.setAdditionalInfo(AstEntryRefactorerRequestConstants.FIND_DEFINITION_IN_ADDITIONAL_INFO,
+        refactoringRequest.setAdditionalInfo(RefactoringRequest.FIND_DEFINITION_IN_ADDITIONAL_INFO,
                 false);
         ItemPointer[] pointers = refactorer.findDefinition(refactoringRequest);
 
@@ -510,7 +519,7 @@ public class SearchTest extends AdditionalInfoTestsBase {
 
         RefactoringRequest refactoringRequest = createRefactoringRequest(new Document(str), "foo", 1, 9);
 
-        refactoringRequest.setAdditionalInfo(AstEntryRefactorerRequestConstants.FIND_DEFINITION_IN_ADDITIONAL_INFO,
+        refactoringRequest.setAdditionalInfo(RefactoringRequest.FIND_DEFINITION_IN_ADDITIONAL_INFO,
                 false);
         ItemPointer[] pointers = refactorer.findDefinition(refactoringRequest);
 

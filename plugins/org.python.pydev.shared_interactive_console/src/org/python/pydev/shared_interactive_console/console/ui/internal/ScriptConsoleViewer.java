@@ -5,7 +5,7 @@
  * which accompanies this distribution, and is available at
  * http://www.eclipse.org/legal/epl-v10.html
  *
- 
+
  *******************************************************************************/
 package org.python.pydev.shared_interactive_console.console.ui.internal;
 
@@ -20,7 +20,9 @@ import org.eclipse.jface.text.ITextSelection;
 import org.eclipse.jface.text.contentassist.ContentAssistEvent;
 import org.eclipse.jface.text.contentassist.ICompletionListener;
 import org.eclipse.jface.text.contentassist.ICompletionProposal;
+import org.eclipse.jface.text.contentassist.IContentAssistant;
 import org.eclipse.jface.text.contentassist.IContentAssistantExtension2;
+import org.eclipse.jface.text.quickassist.IQuickAssistAssistant;
 import org.eclipse.jface.text.source.SourceViewerConfiguration;
 import org.eclipse.jface.util.LocalSelectionTransfer;
 import org.eclipse.jface.viewers.ISelection;
@@ -58,6 +60,7 @@ import org.python.pydev.shared_interactive_console.console.codegen.IScriptConsol
 import org.python.pydev.shared_interactive_console.console.codegen.PythonSnippetUtils;
 import org.python.pydev.shared_interactive_console.console.codegen.SafeScriptConsoleCodeGenerator;
 import org.python.pydev.shared_interactive_console.console.ui.IConsoleStyleProvider;
+import org.python.pydev.shared_interactive_console.console.ui.IScriptConsoleSession;
 import org.python.pydev.shared_interactive_console.console.ui.IScriptConsoleViewer;
 import org.python.pydev.shared_interactive_console.console.ui.ScriptConsole;
 import org.python.pydev.shared_interactive_console.console.ui.internal.actions.AbstractHandleBackspaceAction;
@@ -66,9 +69,9 @@ import org.python.pydev.shared_interactive_console.console.ui.internal.actions.H
 import org.python.pydev.shared_ui.bindings.KeyBindingHelper;
 
 /**
- * This is the viewer for the console. It's responsible for making sure that the actions the 
+ * This is the viewer for the console. It's responsible for making sure that the actions the
  * user does are issued in the correct places in the document and that only editable places are
- * actually editable 
+ * actually editable
  */
 public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptConsoleViewer,
         IScriptConsoleViewer2ForDocumentListener {
@@ -99,9 +102,14 @@ public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptCon
     protected ScriptConsole console;
 
     /**
-     * Attribute defines if this is the main viewer (other viewers may be associated to the same document) 
+     * Attribute defines if this is the main viewer (other viewers may be associated to the same document)
      */
     private boolean isMainViewer;
+
+    /**
+     * Should tab completion be enabled in this interpreter
+     */
+    private boolean tabCompletionEnabled;
 
     /**
      * This class is responsible for checking if commands should be issued or not given the command requested
@@ -205,6 +213,8 @@ public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptCon
      */
     private AbstractHandleBackspaceAction handleBackspaceAction;
 
+    private boolean showInitialCommands;
+
     /**
      * This is the text widget that's used to edit the console. It has some treatments to handle
      * commands that should act differently (special handling for when the caret is on the last line
@@ -219,7 +229,7 @@ public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptCon
         private HandleDeletePreviousWord handleDeletePreviousWord;
 
         /**
-         * Handles a line start action (home) stays within the same line changing from the 
+         * Handles a line start action (home) stays within the same line changing from the
          * 1st char of text, beginning of prompt, beginning of line.
          */
         private HandleLineStartAction handleLineStartAction;
@@ -236,7 +246,7 @@ public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptCon
 
         /**
          * Constructor.
-         * 
+         *
          * @param parent parent for the styled text
          * @param style style to be used
          */
@@ -247,7 +257,7 @@ public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptCon
              * The StyledText will change the caretOffset that we've updated during the modifications,
              * so, the verify and the extended modify listener will keep track if it actually does
              * that and will reset the caret to the position we actually added it.
-             * 
+             *
              * Feels like a hack but I couldn't find a better way to do it.
              */
             addVerifyListener(new VerifyListener() {
@@ -512,7 +522,7 @@ public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptCon
                 super.invokeAction(action);
 
             } else {
-                //we're not in the editable range (so, as the command was already checked to be valid, 
+                //we're not in the editable range (so, as the command was already checked to be valid,
                 //let's just let it keep its way)
                 super.invokeAction(action);
             }
@@ -562,7 +572,7 @@ public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptCon
         }
 
         /**
-         * Changes the selected range to be all editable. 
+         * Changes the selected range to be all editable.
          */
         protected void changeSelectionToEditableRange() {
             Point range = getSelectedRange();
@@ -603,6 +613,13 @@ public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptCon
     }
 
     /**
+     * @return the number of characters visible on a line
+     */
+    public int getConsoleWidthInCharacters() {
+        return getTextWidget().getSize().x / getWidthInPixels("a");
+    }
+
+    /**
      * @return the caret offset (based on the document)
      */
     public int getCaretOffset() {
@@ -615,7 +632,7 @@ public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptCon
 
     /**
      * Sets the new caret position in the console.
-     * 
+     *
      * TODO: async should not be allowed (only clearing the shell at the constructor still uses that)
      */
     public void setCaretOffset(final int offset, boolean async) {
@@ -656,7 +673,7 @@ public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptCon
 
     /**
      * @return true if the caret is currently in a position that can be edited.
-     * @throws BadLocationException 
+     * @throws BadLocationException
      */
     protected boolean isCaretInLastLine() throws BadLocationException {
         return getTextWidget().getCaretOffset() >= listener.getLastLineOffset();
@@ -677,9 +694,14 @@ public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptCon
         return new ScriptConsoleStyledText(parent, styles);
     }
 
+    @Override
+    public IScriptConsoleSession getConsoleSession() {
+        return this.console.getSession();
+    }
+
     /**
-     * Constructor 
-     * 
+     * Constructor
+     *
      * @param parent parent for this viewer
      * @param console the console that this viewer is showing
      * @param contentHandler
@@ -687,10 +709,12 @@ public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptCon
     public ScriptConsoleViewer(Composite parent, ScriptConsole console,
             final IScriptConsoleContentHandler contentHandler, IConsoleStyleProvider styleProvider,
             String initialCommands, boolean focusOnStart, AbstractHandleBackspaceAction handleBackspaceAction,
-            IHandleScriptAutoEditStrategy strategy) {
+            IHandleScriptAutoEditStrategy strategy, boolean tabCompletionEnabled, boolean showInitialCommands) {
         super(parent, console);
+        this.showInitialCommands = showInitialCommands;
         this.handleBackspaceAction = handleBackspaceAction;
         this.focusOnStart = focusOnStart;
+        this.tabCompletionEnabled = tabCompletionEnabled;
 
         this.console = console;
         this.getTextWidget().setBackground(console.getPydevConsoleBackground());
@@ -704,7 +728,7 @@ public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptCon
             this.history = console.getHistory();
 
             this.listener = new ScriptConsoleDocumentListener(this, console, console.getPrompt(), console.getHistory(),
-                    console.getLineTrackers(), initialCommands, strategy);
+                    console.createLineTrackers(console), initialCommands, strategy);
 
             this.listener.setDocument(getDocument());
         } else {
@@ -719,7 +743,7 @@ public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptCon
 
         //Added because we don't want the console to close when the user presses ESC
         //(as it would when it's on a floating window)
-        //we do that because ESC is meant to clear the current line (and as such, 
+        //we do that because ESC is meant to clear the current line (and as such,
         //should do that action and not close the console).
         styledText.addTraverseListener(new TraverseListener() {
 
@@ -770,6 +794,24 @@ public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptCon
                         || KeyBindingHelper.matchesQuickAssistKeybinding(event)) {
                     event.doit = false;
                     return;
+                }
+            }
+        });
+
+        // IPython tab completion
+        styledText.addVerifyKeyListener(new VerifyKeyListener() {
+            public void verifyKey(VerifyEvent event) {
+                if (!ScriptConsoleViewer.this.tabCompletionEnabled ||
+                        inCompletion // if we're already doing a code-completion with Ctrl+Space, we shouldn't do the tab completion.
+                ) {
+                    return;
+                }
+                // Don't auto-complete if the tab is the first character on the line
+                if (event.character == SWT.TAB && !listener.getCommandLine().trim().isEmpty()) {
+                    // Show IPython completions when the user tabs in the console
+                    listener.handleConsoleTabCompletions();
+                    // And eat the tab
+                    event.doit = false;
                 }
             }
         });
@@ -826,11 +868,19 @@ public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptCon
         }
 
         if (isMainViewer) {
-            clear(true);
+            clear(showInitialCommands);
         }
         if (focusOnStart) {
             this.getTextWidget().setFocus();
         }
+    }
+
+    public IContentAssistant getContentAssist() {
+        return fContentAssistant;
+    }
+
+    public IQuickAssistAssistant getQuickFixContentAssist() {
+        return fQuickAssistAssistant;
     }
 
     /**
@@ -878,12 +928,16 @@ public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptCon
 
     /*
      * Overridden just to change visibility.
-     * 
+     *
      * (non-Javadoc)
      * @see org.eclipse.ui.console.TextConsoleViewer#revealEndOfDocument()
      */
     @Override
     public void revealEndOfDocument() {
         super.revealEndOfDocument();
+    }
+
+    public void discardCommandLine() {
+        listener.discardCommandLine();
     }
 }

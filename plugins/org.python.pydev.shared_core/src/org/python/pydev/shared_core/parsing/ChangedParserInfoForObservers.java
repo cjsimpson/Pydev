@@ -13,17 +13,25 @@ import org.python.pydev.shared_core.model.ISimpleNode;
 public class ChangedParserInfoForObservers {
 
     public final ISimpleNode root;
+    public final long docModificationStamp;
     public final IAdaptable file;
     public final IDocument doc;
     public final Object[] argsToReparse;
-    public final long documentTime;
+    public final long documentMillisTime;
 
-    public ChangedParserInfoForObservers(ISimpleNode root, IAdaptable file, IDocument doc, long documentTime,
-            Object... argsToReparse) {
+    /**
+     * This is the error info when generating the AST. May be null.
+     */
+    public final ErrorParserInfoForObservers errorInfo;
+
+    public ChangedParserInfoForObservers(ISimpleNode root, long docModificationStamp, IAdaptable file, IDocument doc,
+            long documentMillisTime, ErrorParserInfoForObservers errorInfo, Object... argsToReparse) {
         this.root = root;
+        this.docModificationStamp = docModificationStamp;
         this.file = file;
         this.doc = doc;
         this.argsToReparse = argsToReparse;
-        this.documentTime = documentTime;
+        this.documentMillisTime = documentMillisTime;
+        this.errorInfo = errorInfo;
     }
 }

@@ -11,25 +11,44 @@
 ******************************************************************************/
 package org.python.pydev.shared_ui.editor;
 
+import java.io.File;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
+import org.eclipse.core.resources.IStorage;
+import org.eclipse.core.resources.IWorkspace;
+import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.Assert;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IAdaptable;
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.jface.text.IDocument;
+import org.eclipse.jface.text.source.IAnnotationModel;
+import org.eclipse.jface.text.source.IOverviewRuler;
+import org.eclipse.jface.text.source.ISharedTextColors;
 import org.eclipse.jface.text.source.ISourceViewer;
+import org.eclipse.jface.viewers.ISelectionChangedListener;
+import org.eclipse.jface.viewers.SelectionChangedEvent;
 import org.eclipse.swt.custom.StyledText;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IEditorInput;
+import org.eclipse.ui.IStorageEditorInput;
+import org.eclipse.ui.IURIEditorInput;
 import org.eclipse.ui.editors.text.TextEditor;
-import org.eclipse.ui.part.FileEditorInput;
+import org.eclipse.ui.texteditor.AbstractTextEditor;
+import org.eclipse.ui.texteditor.AnnotationPreference;
 import org.eclipse.ui.texteditor.IDocumentProvider;
+import org.python.pydev.overview_ruler.MinimapOverviewRuler;
+import org.python.pydev.overview_ruler.MinimapOverviewRulerPreferencesPage;
 import org.python.pydev.shared_core.editor.IBaseEditor;
 import org.python.pydev.shared_core.log.Log;
 import org.python.pydev.shared_core.model.ErrorDescription;
@@ -40,6 +59,8 @@ import org.python.pydev.shared_core.parsing.IScopesParser;
 import org.python.pydev.shared_core.string.ICharacterPairMatcher2;
 import org.python.pydev.shared_core.string.TextSelectionUtils;
 import org.python.pydev.shared_core.structure.OrderedSet;
+import org.python.pydev.shared_core.utils.Reflection;
+import org.python.pydev.shared_ui.outline.IOutlineModel;
 
 public abstract class BaseEditor extends TextEditor implements IBaseEditor {
 
@@ -63,6 +84,51 @@ public abstract class BaseEditor extends TextEditor implements IBaseEditor {
     public BaseEditor() {
         super();
         notifier = new PyEditNotifier(this);
+
+        try {
+            //Applying the fix from https://bugs.eclipse.org/bugs/show_bug.cgi?id=368354#c18 in PyDev
+            Field field = AbstractTextEditor.class.getDeclaredField("fSelectionChangedListener");
+            field.setAccessible(true);
+            field.set(this, new ISelectionChangedListener() {
+
+                private Runnable fRunnable = new Runnable() {
+                    public void run() {
+                        ISourceViewer sourceViewer = BaseEditor.this.getSourceViewer();
+                        // check whether editor has not been disposed yet
+                        if (sourceViewer != null && sourceViewer.getDocument() != null) {
+                            updateSelectionDependentActions();
+                        }
+                    }
+                };
+
+                private Display fDisplay;
+
+                public void selectionChanged(SelectionChangedEvent event)
+                {
+                    Display current = Display.getCurrent();
+                    if (current != null)
+                    {
+                        // Don't execute asynchronously if we're in a thread that has a display.
+                        // Fix for: https://bugs.eclipse.org/bugs/show_bug.cgi?id=368354 (the rationale
+                        // is that the actions were not being enabled because they were previously
+                        // updated in an async call).
+                        // but just patching getSelectionChangedListener() properly.
+                        fRunnable.run();
+                    }
+                    else
+                    {
+                        if (fDisplay == null)
+                        {
+                            fDisplay = getSite().getShell().getDisplay();
+                        }
+                        fDisplay.asyncExec(fRunnable);
+                    }
+                    handleCursorPositionChanged();
+                }
+            });
+        } catch (Exception e) {
+            Log.log(e);
+        }
 
     }
 
@@ -135,14 +201,26 @@ public abstract class BaseEditor extends TextEditor implements IBaseEditor {
         sourceViewer.revealRange(offset, length);
     }
 
+    public ISourceViewer getEditorSourceViewer() {
+        return getSourceViewer();
+    }
+
+    public IAnnotationModel getAnnotationModel() {
+        final IDocumentProvider documentProvider = getDocumentProvider();
+        if (documentProvider == null) {
+            return null;
+        }
+        return documentProvider.getAnnotationModel(getEditorInput());
+    }
+
     /**
      * This map may be used by clients to store info regarding this editor.
-     * 
+     *
      * Clients should be careful so that this key is unique and does not conflict with other
-     * plugins. 
-     * 
+     * plugins.
+     *
      * This is not enforced.
-     * 
+     *
      * The suggestion is that the cache key is always preceded by the class name that will use it.
      */
     public Map<String, Object> cache = new HashMap<String, Object>();
@@ -226,9 +304,35 @@ public abstract class BaseEditor extends TextEditor implements IBaseEditor {
      */
     public IProject getProject() {
         IEditorInput editorInput = this.getEditorInput();
-        if (editorInput instanceof FileEditorInput) {
-            IFile file = (IFile) ((FileEditorInput) editorInput).getAdapter(IFile.class);
-            return file.getProject();
+        if (editorInput instanceof IAdaptable) {
+            IAdaptable adaptable = editorInput;
+            IFile file = (IFile) adaptable.getAdapter(IFile.class);
+            if (file != null) {
+                return file.getProject();
+            }
+            IResource resource = (IResource) adaptable.getAdapter(IResource.class);
+            if (resource != null) {
+                return resource.getProject();
+            }
+            if (editorInput instanceof IStorageEditorInput) {
+                IStorageEditorInput iStorageEditorInput = (IStorageEditorInput) editorInput;
+                try {
+                    IStorage storage = iStorageEditorInput.getStorage();
+                    IPath fullPath = storage.getFullPath();
+                    if (fullPath != null) {
+                        IWorkspace ws = ResourcesPlugin.getWorkspace();
+                        for (String s : fullPath.segments()) {
+                            IProject p = ws.getRoot().getProject(s);
+                            if (p.exists()) {
+                                return p;
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.log(e);
+                }
+
+            }
         }
         return null;
     }
@@ -244,6 +348,40 @@ public abstract class BaseEditor extends TextEditor implements IBaseEditor {
             Log.log(e); //Shouldn't really happen, but if it does, let's not fail!
             return null;
         }
+    }
+
+    /**
+     * @return the File being edited
+     */
+    public File getEditorFile() {
+        File f = null;
+        IEditorInput editorInput = this.getEditorInput();
+        IFile file = (IFile) editorInput.getAdapter(IFile.class);
+        if (file != null) {
+            IPath location = file.getLocation();
+            if (location != null) {
+                IPath path = location.makeAbsolute();
+                f = path.toFile();
+            }
+
+        } else {
+            try {
+                if (editorInput instanceof IURIEditorInput) {
+                    IURIEditorInput iuriEditorInput = (IURIEditorInput) editorInput;
+                    return new File(iuriEditorInput.getURI());
+                }
+            } catch (Throwable e) {
+                //OK, IURIEditorInput was only added on eclipse 3.3
+            }
+
+            try {
+                IPath path = (IPath) Reflection.invoke(editorInput, "getPath", new Object[0]);
+                f = path.toFile();
+            } catch (Throwable e) {
+                //ok, it has no getPath
+            }
+        }
+        return f;
     }
 
     protected abstract BaseParserManager getParserManager();
@@ -313,4 +451,50 @@ public abstract class BaseEditor extends TextEditor implements IBaseEditor {
     public abstract ICharacterPairMatcher2 getPairMatcher();
 
     public abstract IScopesParser createScopesParser();
+
+    @Override
+    protected IOverviewRuler createOverviewRuler(ISharedTextColors sharedColors) {
+        // Note: create the minimap overview ruler regardless of whether it should be shown or not
+        // (the setting to show it will control what's drawn).
+        if (MinimapOverviewRulerPreferencesPage.useMinimap()) {
+            IOutlineModel outlineModel = (IOutlineModel) this.getAdapter(IOutlineModel.class);
+            IOverviewRuler ruler = new MinimapOverviewRuler(getAnnotationAccess(), sharedColors, outlineModel);
+
+            Iterator e = getAnnotationPreferences().getAnnotationPreferences().iterator();
+            while (e.hasNext()) {
+                AnnotationPreference preference = (AnnotationPreference) e.next();
+                if (preference.contributesToHeader()) {
+                    ruler.addHeaderAnnotationType(preference.getAnnotationType());
+                }
+            }
+            return ruler;
+        } else {
+            return super.createOverviewRuler(sharedColors);
+        }
+    }
+
+    IOutlineModel outlineModel;
+
+    @Override
+    public Object getAdapter(Class adapter) {
+        if (IOutlineModel.class.equals(adapter)) {
+            if (outlineModel == null) {
+                outlineModel = createOutlineModel();
+            }
+            return outlineModel;
+        }
+        return super.getAdapter(adapter);
+    }
+
+    public abstract IOutlineModel createOutlineModel();
+
+    @Override
+    public void dispose() {
+        if (outlineModel != null) {
+            outlineModel.dispose();
+            outlineModel = null;
+        }
+        super.dispose();
+    }
+
 }

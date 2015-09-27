@@ -1,3 +1,20 @@
+/******************************************************************************
+* Copyright (C) 2006-2013  IFS Institute for Software and others
+*
+* All rights reserved. This program and the accompanying materials
+* are made available under the terms of the Eclipse Public License v1.0
+* which accompanies this distribution, and is available at
+* http://www.eclipse.org/legal/epl-v10.html
+*
+* Original authors:
+*     Dennis Hunziker
+*     Ueli Kistler
+*     Reto Schuettel
+*     Robin Stocker
+* Contributors:
+*     Fabio Zadrozny <fabiofz@gmail.com>       - initial implementation
+*     Alexander Kurtakov <akurtako@redhat.com> - ongoing maintenance
+******************************************************************************/
 /* 
  * Copyright (C) 2006, 2007  Dennis Hunziker, Ueli Kistler
  * Copyright (C) 2007  Reto Schuettel, Robin Stocker
@@ -19,6 +36,7 @@ import org.python.pydev.refactoring.ast.PythonModuleManager;
 import org.python.pydev.refactoring.ast.adapters.ModuleAdapter;
 import org.python.pydev.refactoring.ast.visitors.VisitorFactory;
 import org.python.pydev.shared_core.io.FileUtils;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.ui.pythonpathconf.InterpreterInfo;
 
 public abstract class AbstractIOTestCase extends TestCase implements IInputOutputTestCase {
@@ -71,7 +89,7 @@ public abstract class AbstractIOTestCase extends TestCase implements IInputOutpu
     }
 
     protected void assertContentsEqual(String expected, String generated) {
-        assertEquals(org.python.pydev.shared_core.string.StringUtils.replaceNewLines(expected, "\n"), org.python.pydev.shared_core.string.StringUtils.replaceNewLines(generated, "\n"));
+        assertEquals(StringUtils.replaceNewLines(expected, "\n"), StringUtils.replaceNewLines(generated, "\n"));
     }
 
     @Override
@@ -87,7 +105,7 @@ public abstract class AbstractIOTestCase extends TestCase implements IInputOutpu
     }
 
     protected String getGenerated() {
-        return org.python.pydev.shared_core.string.StringUtils.replaceNewLines(generated.trim(), "\n");
+        return StringUtils.replaceNewLines(generated.trim(), "\n");
     }
 
     public void setTestGenerated(String source) {
@@ -99,6 +117,6 @@ public abstract class AbstractIOTestCase extends TestCase implements IInputOutpu
     }
 
     public String getExpected() {
-        return org.python.pydev.shared_core.string.StringUtils.replaceNewLines(data.result, "\n");
+        return StringUtils.replaceNewLines(data.result, "\n");
     }
 }

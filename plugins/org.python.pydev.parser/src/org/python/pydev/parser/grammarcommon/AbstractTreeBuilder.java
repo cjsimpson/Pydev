@@ -34,7 +34,6 @@ import org.python.pydev.parser.jython.ast.ImportFrom;
 import org.python.pydev.parser.jython.ast.Module;
 import org.python.pydev.parser.jython.ast.Name;
 import org.python.pydev.parser.jython.ast.NameTok;
-import org.python.pydev.parser.jython.ast.NameTokType;
 import org.python.pydev.parser.jython.ast.Num;
 import org.python.pydev.parser.jython.ast.Pass;
 import org.python.pydev.parser.jython.ast.Set;
@@ -178,6 +177,9 @@ public abstract class AbstractTreeBuilder extends AbstractTreeBuilderHelpers {
             case JJTAUG_MULTIPLY:
                 ret = new AugAssign(null, AugAssign.Mult, null);
                 break;
+            case JJTAUG_DOT:
+                ret = new AugAssign(null, AugAssign.Dot, null);
+                break;
             case JJTAUG_DIVIDE:
                 ret = new AugAssign(null, AugAssign.Div, null);
                 break;
@@ -229,6 +231,9 @@ public abstract class AbstractTreeBuilder extends AbstractTreeBuilderHelpers {
                 break;
             case JJTMUL_2OP:
                 ret = new BinOp(null, BinOp.Mult, null);
+                break;
+            case JJTDOT_2OP:
+                ret = new BinOp(null, BinOp.Dot, null);
                 break;
             case JJTDIV_2OP:
                 ret = new BinOp(null, BinOp.Div, null);
@@ -401,7 +406,7 @@ public abstract class AbstractTreeBuilder extends AbstractTreeBuilderHelpers {
                     list2.add(0, makeDecorator(listArgs));
                     listArgs.clear();
                 }
-                return new Decorators((decoratorsType[]) list2.toArray(new decoratorsType[0]), JJTDECORATORS);
+                return new Decorators(list2.toArray(new decoratorsType[0]), JJTDECORATORS);
 
             case JJTSUBSCRIPTLIST:
                 sliceType[] dims = new sliceType[arity];
@@ -424,6 +429,7 @@ public abstract class AbstractTreeBuilder extends AbstractTreeBuilderHelpers {
             case JJTAUG_PLUS:
             case JJTAUG_MINUS:
             case JJTAUG_MULTIPLY:
+            case JJTAUG_DOT:
             case JJTAUG_DIVIDE:
             case JJTAUG_MODULO:
             case JJTAUG_AND:
@@ -511,6 +517,7 @@ public abstract class AbstractTreeBuilder extends AbstractTreeBuilderHelpers {
             case JJTADD_2OP:
             case JJTSUB_2OP:
             case JJTMUL_2OP:
+            case JJTDOT_2OP:
             case JJTDIV_2OP:
             case JJTMOD_2OP:
             case JJTPOW_2OP:
@@ -677,7 +684,7 @@ public abstract class AbstractTreeBuilder extends AbstractTreeBuilderHelpers {
         return last;
     }
 
-    protected final SimpleNode makeImportFrom25Onwards(int arity) {
+    protected final SimpleNode makeImportFrom25Onwards(int arity) throws ParseException {
         ArrayList<aliasType> aliastL = new ArrayList<aliasType>();
         while (arity > 0 && stack.peekNode() instanceof aliasType) {
             aliastL.add(0, (aliasType) stack.popNode());
@@ -703,7 +710,7 @@ public abstract class AbstractTreeBuilder extends AbstractTreeBuilderHelpers {
                 Log.log("Expected to find 'from' token as the current temporary token (begin col/line can be wrong)!");
             }
         }
-        return new ImportFrom((NameTokType) nT, aliastL.toArray(new aliasType[0]), 0);
+        return new ImportFrom(nT, aliastL.toArray(new aliasType[0]), 0);
     }
 
     protected final ComprehensionCollection makeCompFor(int arity) throws Exception {

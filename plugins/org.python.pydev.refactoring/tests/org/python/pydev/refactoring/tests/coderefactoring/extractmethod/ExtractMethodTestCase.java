@@ -1,3 +1,19 @@
+/******************************************************************************
+* Copyright (C) 2006-2012  IFS Institute for Software and others
+*
+* All rights reserved. This program and the accompanying materials
+* are made available under the terms of the Eclipse Public License v1.0
+* which accompanies this distribution, and is available at
+* http://www.eclipse.org/legal/epl-v10.html
+*
+* Original authors:
+*     Dennis Hunziker
+*     Ueli Kistler
+*     Reto Schuettel
+*     Robin Stocker
+* Contributors:
+*     Fabio Zadrozny <fabiofz@gmail.com> - initial implementation
+******************************************************************************/
 /* 
  * Copyright (C) 2006, 2007  Dennis Hunziker, Ueli Kistler
  * Copyright (C) 2007  Reto Schuettel, Robin Stocker
@@ -15,7 +31,6 @@ import org.eclipse.jface.text.ITextSelection;
 import org.eclipse.jface.text.TextSelection;
 import org.eclipse.text.edits.MalformedTreeException;
 import org.eclipse.text.edits.MultiTextEdit;
-import org.python.pydev.core.FileUtilsFileBuffer;
 import org.python.pydev.core.IGrammarVersionProvider;
 import org.python.pydev.core.MisconfigurationException;
 import org.python.pydev.parser.jython.ast.Module;
@@ -29,6 +44,7 @@ import org.python.pydev.refactoring.coderefactoring.extractmethod.request.Extrac
 import org.python.pydev.refactoring.core.base.RefactoringInfo;
 import org.python.pydev.refactoring.tests.adapter.PythonNatureStub;
 import org.python.pydev.refactoring.tests.core.AbstractIOTestCase;
+import org.python.pydev.shared_core.io.FileUtils;
 
 import com.thoughtworks.xstream.XStream;
 
@@ -42,7 +58,7 @@ public class ExtractMethodTestCase extends AbstractIOTestCase {
 
     @Override
     public void runTest() throws Throwable {
-        FileUtilsFileBuffer.IN_TESTS = true;
+        FileUtils.IN_TESTS = true;
         MockupExtractMethodConfig config = initConfig();
 
         IDocument doc = new Document(data.source);
@@ -70,7 +86,7 @@ public class ExtractMethodTestCase extends AbstractIOTestCase {
 
         this.setTestGenerated(refactoringDoc.get());
         assertContentsEqual(getExpected(), getGenerated());
-        FileUtilsFileBuffer.IN_TESTS = false;
+        FileUtils.IN_TESTS = false;
     }
 
     private IDocument applyExtractMethod(RefactoringInfo info, MockupExtractMethodRequestProcessor requestProcessor)

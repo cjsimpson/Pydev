@@ -20,7 +20,6 @@ import org.python.pydev.core.log.Log;
 import org.python.pydev.editor.actions.PyOpenAction;
 import org.python.pydev.editor.codecompletion.revisited.CompletionCache;
 import org.python.pydev.editor.codecompletion.revisited.CompletionStateFactory;
-import org.python.pydev.editor.codecompletion.revisited.visitors.Definition;
 import org.python.pydev.editor.model.ItemPointer;
 import org.python.pydev.editor.refactoring.PyRefactoringFindDefinition;
 import org.python.pydev.editorinput.PySourceLocatorBase;
@@ -42,6 +41,7 @@ public class PyUnitTestResult {
     private WeakReference<PyUnitTestRun> testRun;
 
     public final String STATUS_OK = "ok";
+    public final String STATUS_SKIP = "skip";
     public final String STATUS_FAIL = "fail";
     public final String STATUS_ERROR = "error";
     public final String index;
@@ -67,6 +67,10 @@ public class PyUnitTestResult {
         return STATUS_OK.equals(this.status);
     }
 
+    public boolean isSkip() {
+        return STATUS_SKIP.equals(this.status);
+    }
+
     /**
      * Note that this string is used for the tooltip in the tree (so, be careful when changing it, as the information
      * presentation is based on its format to add a different formatting).
@@ -88,7 +92,12 @@ public class PyUnitTestResult {
         if (file.exists()) {
             PyOpenAction openAction = new PyOpenAction();
             String fileContents = FileUtils.getFileContents(file);
-            ItemPointer itemPointer = getItemPointer(file, fileContents, this.test);
+            String thisTest = this.test;
+            int i = thisTest.indexOf('['); // This happens when parameterizing pytest tests.
+            if (i != -1) {
+                thisTest = thisTest.substring(0, i);
+            }
+            ItemPointer itemPointer = getItemPointer(file, fileContents, thisTest);
             openAction.run(itemPointer);
         }
     }
@@ -110,7 +119,7 @@ public class PyUnitTestResult {
             //do an actual (more costly) find definition.
             try {
                 PySourceLocatorBase locator = new PySourceLocatorBase();
-                IFile workspaceFile = locator.getWorkspaceFile(file);
+                IFile workspaceFile = locator.getWorkspaceFile(file, null);
                 if (workspaceFile != null && workspaceFile.exists()) {
                     IProject project = workspaceFile.getProject();
                     if (project != null && project.exists()) {
@@ -125,7 +134,7 @@ public class PyUnitTestResult {
 
                                 if (definitions != null && definitions.length > 0) {
                                     List<ItemPointer> pointers = new ArrayList<ItemPointer>();
-                                    PyRefactoringFindDefinition.getAsPointers(pointers, (Definition[]) definitions);
+                                    PyRefactoringFindDefinition.getAsPointers(pointers, definitions);
                                     if (pointers.size() > 0) {
                                         return pointers.get(0);
                                     }
@@ -143,4 +152,5 @@ public class PyUnitTestResult {
         }
         return itemPointer;
     }
+
 }

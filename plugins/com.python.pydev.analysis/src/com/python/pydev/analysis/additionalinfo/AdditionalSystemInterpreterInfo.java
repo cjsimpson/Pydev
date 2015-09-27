@@ -13,7 +13,9 @@ package com.python.pydev.analysis.additionalinfo;
 
 import java.io.File;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
@@ -22,7 +24,7 @@ import org.python.pydev.core.IInterpreterInfo;
 import org.python.pydev.core.IInterpreterManager;
 import org.python.pydev.core.ISystemModulesManager;
 import org.python.pydev.core.MisconfigurationException;
-import org.python.pydev.core.docutils.StringUtils;
+import org.python.pydev.core.docutils.PyStringUtils;
 import org.python.pydev.core.log.Log;
 import org.python.pydev.shared_core.structure.Tuple;
 import org.python.pydev.ui.interpreters.PythonInterpreterManager;
@@ -54,10 +56,16 @@ public class AdditionalSystemInterpreterInfo extends AbstractAdditionalInfoWithB
         return additionalInfoInterpreter;
     }
 
+    @Override
+    protected String getUIRepresentation() {
+        return manager != null ? manager.getManagerRelatedName() : "Unknown manager";
+    }
+
     /**
      * @return the path to the folder we want to keep things on
      * @throws MisconfigurationException 
      */
+    @Override
     protected File getPersistingFolder() {
         return persistingFolder;
     }
@@ -65,6 +73,19 @@ public class AdditionalSystemInterpreterInfo extends AbstractAdditionalInfoWithB
     @Override
     protected File getPersistingLocation() throws MisconfigurationException {
         return persistingLocation;
+    }
+
+    @Override
+    protected Set<String> getPythonPathFolders() {
+        Set<String> ret = new HashSet<>();
+        try {
+            IInterpreterInfo interpreterInfo = this.manager.getInterpreterInfo(additionalInfoInterpreter,
+                    new NullProgressMonitor());
+            ret.addAll(interpreterInfo.getPythonPath());
+        } catch (MisconfigurationException e) {
+            Log.log(e);
+        }
+        return ret;
     }
 
     public AdditionalSystemInterpreterInfo(IInterpreterManager manager, String interpreter)
@@ -83,7 +104,7 @@ public class AdditionalSystemInterpreterInfo extends AbstractAdditionalInfoWithB
             base = new File(".");
         }
         File file = new File(base, manager.getManagerRelatedName() + "_"
-                + StringUtils.getExeAsFileSystemValidPath(this.additionalInfoInterpreter));
+                + PyStringUtils.getExeAsFileSystemValidPath(this.additionalInfoInterpreter));
 
         try {
             if (!file.exists()) {

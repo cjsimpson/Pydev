@@ -34,8 +34,8 @@ import org.eclipse.ui.commands.IWorkbenchCommandSupport;
 import org.eclipse.ui.commands.Priority;
 import org.eclipse.ui.texteditor.ITextEditorActionDefinitionIds;
 import org.python.pydev.core.IPythonPartitions;
-import org.python.pydev.core.docutils.PyPartitionScanner;
-import org.python.pydev.core.docutils.PyPartitioner;
+import org.python.pydev.core.partition.PyPartitionScanner;
+import org.python.pydev.core.partition.PyPartitioner;
 import org.python.pydev.debug.core.PydevDebugPlugin;
 import org.python.pydev.debug.model.PyBreakpoint;
 import org.python.pydev.debug.ui.PythonSourceViewer;
@@ -58,7 +58,7 @@ public class BreakpointConditionEditor {
 
     public BreakpointConditionEditor(Composite parent, PythonBreakpointPage page) {
         fPage = page;
-        fBreakpoint = (PyBreakpoint) fPage.getBreakpoint();
+        fBreakpoint = fPage.getBreakpoint();
         String condition;
         try {
             condition = fBreakpoint.getCondition();
@@ -145,7 +145,7 @@ public class BreakpointConditionEditor {
             }
         };
         submission = new HandlerSubmission(null, parent.getShell(), null,
-                ITextEditorActionDefinitionIds.CONTENT_ASSIST_PROPOSALS, handler, Priority.MEDIUM); //$NON-NLS-1$    
+                ITextEditorActionDefinitionIds.CONTENT_ASSIST_PROPOSALS, handler, Priority.MEDIUM);
     }
 
     /**

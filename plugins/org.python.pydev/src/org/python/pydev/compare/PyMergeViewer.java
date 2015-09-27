@@ -17,7 +17,9 @@ import org.eclipse.compare.ITypedElement;
 import org.eclipse.compare.contentmergeviewer.TextMergeViewer;
 import org.eclipse.compare.structuremergeviewer.ICompareInput;
 import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
+import org.eclipse.core.runtime.IAdaptable;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.jface.text.IDocumentPartitioner;
@@ -36,12 +38,14 @@ import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.IWorkbenchPart;
 import org.eclipse.ui.IWorkbenchPartSite;
 import org.eclipse.ui.IWorkbenchWindow;
+import org.python.pydev.core.IGrammarVersionProvider;
 import org.python.pydev.core.IIndentPrefs;
 import org.python.pydev.core.IPythonNature;
 import org.python.pydev.core.IPythonPartitions;
 import org.python.pydev.core.MisconfigurationException;
-import org.python.pydev.core.docutils.PyPartitionScanner;
 import org.python.pydev.core.docutils.PySelection;
+import org.python.pydev.core.log.Log;
+import org.python.pydev.core.partition.PyPartitionScanner;
 import org.python.pydev.editor.IPySyntaxHighlightingAndCodeCompletionEditor;
 import org.python.pydev.editor.PyEdit;
 import org.python.pydev.editor.PyEditConfiguration;
@@ -98,9 +102,6 @@ public class PyMergeViewer extends TextMergeViewer {
             return null;
         }
         ICompareInput input = (ICompareInput) compareInput;
-        if (input == null) {
-            return null;
-        }
 
         IResourceProvider rp = null;
         ITypedElement te = input.getLeft();
@@ -178,11 +179,25 @@ public class PyMergeViewer extends TextMergeViewer {
     @SuppressWarnings("unchecked")
     @Override
     protected void configureTextViewer(TextViewer textViewer) {
-        if (!(textViewer instanceof SourceViewer))
+        if (!(textViewer instanceof SourceViewer)) {
             return;
+        }
         final SourceViewer sourceViewer = (SourceViewer) textViewer;
 
-        final IIndentPrefs indentPrefs = new DefaultIndentPrefs();
+        IAdaptable adaptable;
+        if (sourceViewer instanceof IAdaptable) {
+            adaptable = (IAdaptable) sourceViewer;
+        } else {
+            adaptable = new IAdaptable() {
+
+                @Override
+                public Object getAdapter(Class adapter) {
+                    return null;
+                }
+            };
+        }
+
+        final IIndentPrefs indentPrefs = new DefaultIndentPrefs(adaptable);
 
         //Hack to provide the source viewer configuration that'll only be created later (there's a cycle there).
         final WeakReference<PyEditConfigurationWithoutEditor>[] sourceViewerConfigurationObj = new WeakReference[1];
@@ -202,8 +217,9 @@ public class PyMergeViewer extends TextMergeViewer {
                 String[] types = configuration.getConfiguredContentTypes(sourceViewer);
                 for (int i = 0; i < types.length; i++) {
                     String[] prefixes = configuration.getIndentPrefixes(sourceViewer, types[i]);
-                    if (prefixes != null && prefixes.length > 0)
+                    if (prefixes != null && prefixes.length > 0) {
                         sourceViewer.setIndentPrefixes(prefixes, types[i]);
+                    }
                 }
             }
 
@@ -245,6 +261,16 @@ public class PyMergeViewer extends TextMergeViewer {
                 return PyMergeViewer.this.getPythonNature(PyMergeViewer.this.getInput());
             }
 
+            @Override
+            public int getGrammarVersion() throws MisconfigurationException {
+                IPythonNature pythonNature = this.getPythonNature();
+                if (pythonNature == null) {
+                    Log.logInfo("Expected to get the PythonNature at this point...");
+                    return IGrammarVersionProvider.LATEST_GRAMMAR_VERSION;
+                }
+                return pythonNature.getGrammarVersion();
+            }
+
             public Object getAdapter(Class adapter) {
                 if (adapter == IResource.class) {
                     return PyMergeViewer.this.getResource(PyMergeViewer.this.getInput());
@@ -255,11 +281,18 @@ public class PyMergeViewer extends TextMergeViewer {
                         return resource;
                     }
                 }
+                if (adapter == IProject.class) {
+                    IResource resource = PyMergeViewer.this.getResource(PyMergeViewer.this.getInput());
+                    if (resource instanceof IFile) {
+                        return resource.getProject();
+                    }
+                }
                 return null;
             }
         };
 
         final PyEditConfiguration sourceViewerConfiguration = new PyEditConfiguration(c, editor, chainedPrefStore);
+        sourceViewerConfiguration.getPyAutoIndentStrategy(editor); // Force its initialization
         sourceViewerConfigurationObj[0] = new WeakReference<PyEditConfigurationWithoutEditor>(sourceViewerConfiguration);
         sourceViewer.configure(sourceViewerConfiguration);
 

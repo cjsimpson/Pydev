@@ -7,6 +7,7 @@
 package org.python.pydev.debug.newconsole;
 
 import org.eclipse.swt.graphics.RGB;
+import org.python.pydev.shared_interactive_console.console.ui.ScriptConsole;
 
 /**
  * Constants for the console
@@ -37,14 +38,20 @@ public final class PydevConsoleConstants {
     public static final String DEBUG_CONSOLE_BACKGROUND_COLOR = "pydevdebugconsole_background_color";
     public static final RGB DEFAULT_DEBUG_CONSOLE_BACKGROUND_COLOR = new RGB(230, 230, 230); // Light Gray
 
-    public static final String CONSOLE_TYPE = "org.python.pydev.debug.newconsole.PydevConsole";
+    public static final String CONSOLE_TYPE = ScriptConsole.DEFAULT_CONSOLE_TYPE;
     public static final String DEBUG_CONSOLE_TYPE = "org.python.pydev.debug.newconsole.PydevDebugConsole";
 
     public static final String INTERACTIVE_CONSOLE_VM_ARGS = "INTERACTIVE_CONSOLE_VM_ARGS";
     public static final String DEFAULT_INTERACTIVE_CONSOLE_VM_ARGS = "-Xmx64m";
 
+    public static final String INTERACTIVE_CONSOLE_ENCODING = "INTERACTIVE_CONSOLE_ENCODING";
+    public static final String DEFAULT_INTERACTIVE_CONSOLE_ENCODING = "UTF-8";
+
     public static final String INITIAL_INTERPRETER_CMDS = "INITIAL_INTERPRETER_CMDS";
     public static final String DEFAULT_INITIAL_INTERPRETER_CMDS = "import sys; print('%s %s' % (sys.executable or sys.platform, sys.version))\n";
+
+    public static final String DJANGO_INTERPRETER_CMDS = "DJANGO_INTERPRETER_CMDS";
+    public static final String DEFAULT_DJANGO_INTERPRETER_CMDS = "import os; os.environ['DJANGO_SETTINGS_MODULE'] = '${DJANGO_SETTINGS_MODULE}'; import django\nif django.get_version() < '1.5':\n\tfrom django.core import management\n\timport ${DJANGO_SETTINGS_MODULE} as settings\n\tmanagement.setup_environ(settings)\nif django.get_version() >= '1.7':\n\tfrom django.core.wsgi import get_wsgi_application\n\tapplication = get_wsgi_application()\n";
 
     public static final String INTERACTIVE_CONSOLE_MAXIMUM_CONNECTION_ATTEMPTS = "INTERACTIVE_CONSOLE_MAXIMUM_CONNECTION_ATTEMPTS";
     public static final int DEFAULT_INTERACTIVE_CONSOLE_MAXIMUM_CONNECTION_ATTEMPTS = 50;
@@ -55,11 +62,14 @@ public final class PydevConsoleConstants {
     public static final String INTERACTIVE_CONSOLE_FOCUS_ON_SEND_COMMAND = "INTERACTIVE_CONSOLE_FOCUS_ON_SEND_COMMAND";
     public static final boolean DEFAULT_INTERACTIVE_CONSOLE_FOCUS_ON_SEND_COMMAND = true;
 
-    public static final String INTERACTIVE_CONSOLE_CONNECT_VARIABLE_VIEW = "INTERACTIVE_CONSOLE_CONNECT_VARIABLE_VIEW";
-    public static final boolean DEFAULT_INTERACTIVE_CONSOLE_CONNECT_VARIABLE_VIEW = false;
+    public static final String INTERACTIVE_CONSOLE_TAB_COMPLETION = "INTERACTIVE_CONSOLE_TAB_COMPLETION";
+    public static final boolean DEFAULT_INTERACTIVE_CONSOLE_TAB_COMPLETION = true;
+
+    public static final String INTERACTIVE_CONSOLE_CONNECT_DEBUG_SESSION = "INTERACTIVE_CONSOLE_CONNECT_DEBUG_SESSION";
+    public static final boolean DEFAULT_INTERACTIVE_CONSOLE_CONNECT_DEBUG_SESSION = false;
 
     public static final String INTERACTIVE_CONSOLE_SEND_INITIAL_COMMAND_WHEN_CREATED_FROM_EDITOR = "INTERACTIVE_CONSOLE_SEND_INITIAL_COMMAND_WHEN_CREATED_FROM_EDITOR";
-    public static final boolean DEFAULT_INTERACTIVE_CONSOLE_SEND_INITIAL_COMMAND_WHEN_CREATED_FROM_EDITOR = true;
+    public static final boolean DEFAULT_INTERACTIVE_CONSOLE_SEND_INITIAL_COMMAND_WHEN_CREATED_FROM_EDITOR = false;
 
     public static final String INTERACTIVE_CONSOLE_ENABLE_GUI_ON_STARTUP = "INTERACTIVE_CONSOLE_ENABLE_GUI_ON_STARTUP";
     public static final String DEFAULT_INTERACTIVE_CONSOLE_ENABLE_GUI_ON_STARTUP = "none";

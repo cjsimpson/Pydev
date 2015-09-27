@@ -1,3 +1,17 @@
+/******************************************************************************
+* Copyright (C) 2006-2013  IFS Institute for Software and others
+*
+* All rights reserved. This program and the accompanying materials
+* are made available under the terms of the Eclipse Public License v1.0
+* which accompanies this distribution, and is available at
+* http://www.eclipse.org/legal/epl-v10.html
+*
+* Original authors:
+*     Dennis Hunziker
+*     Ueli Kistler
+* Contributors:
+*     Fabio Zadrozny <fabiofz@gmail.com> - initial implementation
+******************************************************************************/
 /* 
  * Copyright (C) 2006, 2007  Dennis Hunziker, Ueli Kistler 
  */
@@ -16,8 +30,7 @@ import org.jgraph.graph.DefaultGraphCell;
 import org.python.pydev.core.IPythonNature;
 import org.python.pydev.parser.PyParser;
 import org.python.pydev.parser.jython.SimpleNode;
-import org.python.pydev.shared_core.model.ISimpleNode;
-import org.python.pydev.shared_core.structure.Tuple;
+import org.python.pydev.shared_core.parsing.BaseParser.ParseOutput;
 
 /**
  * Starts the parser and its visitor (GraphVisitor)
@@ -27,7 +40,7 @@ import org.python.pydev.shared_core.structure.Tuple;
  */
 public class ASTGraph {
 
-    public Tuple<ISimpleNode, Throwable> parseFile(String fileName) throws FileNotFoundException, IOException,
+    public ParseOutput parseFile(String fileName) throws FileNotFoundException, IOException,
             Throwable {
         File pythonSource = new File(fileName);
         BufferedReader in = new BufferedReader(new FileReader(pythonSource));
@@ -43,10 +56,11 @@ public class ASTGraph {
         }
 
         IDocument doc = new Document(source.toString());
-        Tuple<ISimpleNode, Throwable> objects = PyParser.reparseDocument(new PyParser.ParserInfo(doc,
+        ParseOutput objects = PyParser.reparseDocument(new PyParser.ParserInfo(doc,
                 IPythonNature.LATEST_GRAMMAR_VERSION));
-        if (objects.o2 != null)
-            throw objects.o2;
+        if (objects.error != null) {
+            throw objects.error;
+        }
         return objects;
     }
 

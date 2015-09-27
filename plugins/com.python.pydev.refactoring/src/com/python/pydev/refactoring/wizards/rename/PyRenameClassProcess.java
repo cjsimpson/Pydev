@@ -25,7 +25,6 @@ import org.python.pydev.parser.visitors.scope.ASTEntry;
 import org.python.pydev.parser.visitors.scope.SequencialASTIteratorVisitor;
 
 import com.python.pydev.analysis.scopeanalysis.ScopeAnalysis;
-import com.python.pydev.refactoring.refactorer.AstEntryRefactorerRequestConstants;
 import com.python.pydev.refactoring.wizards.RefactorProcessFactory;
 
 /**
@@ -70,6 +69,7 @@ public class PyRenameClassProcess extends AbstractRenameWorkspaceRefactorProcess
      * When checking the class on a local scope, we have to cover the class definition
      * itself and any access to it (global)
      */
+    @Override
     protected void findReferencesToRenameOnLocalScope(RefactoringRequest request, RefactoringStatus status) {
         SimpleNode root = request.getAST();
         List<ASTEntry> oc = new ArrayList<ASTEntry>();
@@ -104,9 +104,9 @@ public class PyRenameClassProcess extends AbstractRenameWorkspaceRefactorProcess
 
             while (classDefInAst.parent != null) {
                 if (classDefInAst.parent.node instanceof FunctionDef) {
-                    request.setAdditionalInfo(AstEntryRefactorerRequestConstants.FIND_REFERENCES_ONLY_IN_LOCAL_SCOPE,
+                    request.setAdditionalInfo(RefactoringRequest.FIND_REFERENCES_ONLY_IN_LOCAL_SCOPE,
                             true); //it is in a local scope.
-                    oc.addAll(this.getOccurrencesWithScopeAnalyzer(request));
+                    oc.addAll(this.getOccurrencesWithScopeAnalyzer(request, (SourceModule) request.getModule()));
                     addOccurrences(request, oc);
                     return;
                 }
@@ -114,7 +114,7 @@ public class PyRenameClassProcess extends AbstractRenameWorkspaceRefactorProcess
             }
 
             //it is defined in the module we're looking for
-            oc.addAll(this.getOccurrencesWithScopeAnalyzer(request));
+            oc.addAll(this.getOccurrencesWithScopeAnalyzer(request, (SourceModule) request.getModule()));
         } else {
             //it is defined in some other module (or as a comment... so, we won't have an exact match in the position)
             oc.addAll(ScopeAnalysis.getLocalOccurrences(request.initialName, root));
@@ -155,8 +155,9 @@ public class PyRenameClassProcess extends AbstractRenameWorkspaceRefactorProcess
      * This method is called for each module that may have some reference to the definition
      * we're looking for. 
      */
-    protected List<ASTEntry> findReferencesOnOtherModule(RefactoringStatus status, String initialName,
-            SourceModule module) {
+    @Override
+    protected List<ASTEntry> findReferencesOnOtherModule(RefactoringStatus status, RefactoringRequest request,
+            String initialName, SourceModule module) {
         SimpleNode root = module.getAst();
 
         List<ASTEntry> entryOccurrences = ScopeAnalysis.getLocalOccurrences(initialName, root);

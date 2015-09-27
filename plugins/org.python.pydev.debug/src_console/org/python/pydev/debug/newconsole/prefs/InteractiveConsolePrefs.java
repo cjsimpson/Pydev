@@ -21,7 +21,6 @@ import org.python.pydev.debug.newconsole.PydevConsoleConstants;
 import org.python.pydev.shared_core.SharedCorePlugin;
 import org.python.pydev.shared_interactive_console.InteractiveConsolePlugin;
 import org.python.pydev.shared_interactive_console.console.ui.ScriptConsoleUIConstants;
-import org.python.pydev.shared_ui.field_editors.MultiStringFieldEditor;
 
 public class InteractiveConsolePrefs extends FieldEditorPreferencePage implements IWorkbenchPreferencePage {
 
@@ -35,33 +34,34 @@ public class InteractiveConsolePrefs extends FieldEditorPreferencePage implement
     protected void createFieldEditors() {
         Composite p = getFieldEditorParent();
 
-        ColorFieldEditor sysout = new ColorFieldEditor(PydevConsoleConstants.CONSOLE_OUTPUT_COLOR, "Stdout color", p);
-        ColorFieldEditor syserr = new ColorFieldEditor(PydevConsoleConstants.CONSOLE_ERROR_COLOR, "Stderr color", p);
-        ColorFieldEditor sysin = new ColorFieldEditor(PydevConsoleConstants.CONSOLE_INPUT_COLOR, "Stdin color", p);
-        ColorFieldEditor prompt = new ColorFieldEditor(PydevConsoleConstants.CONSOLE_PROMPT_COLOR, "Prompt color", p);
-        ColorFieldEditor background = new ColorFieldEditor(PydevConsoleConstants.CONSOLE_BACKGROUND_COLOR,
-                "Background color", p);
-        ColorFieldEditor debugBackground = new ColorFieldEditor(PydevConsoleConstants.DEBUG_CONSOLE_BACKGROUND_COLOR,
-                "Debug console background color", p);
+        addField(new ColorFieldEditor(PydevConsoleConstants.CONSOLE_OUTPUT_COLOR, "Stdout color", p));
 
-        addField(sysout);
-        addField(syserr);
-        addField(sysin);
-        addField(prompt);
-        addField(background);
-        addField(debugBackground);
+        addField(new ColorFieldEditor(PydevConsoleConstants.CONSOLE_ERROR_COLOR, "Stderr color", p));
 
-        addField(new MultiStringFieldEditor(PydevConsoleConstants.INITIAL_INTERPRETER_CMDS,
-                "Initial interpreter commands.\n\nCan use variables from:\nRun/Debug > String Substitution", p));
+        addField(new ColorFieldEditor(PydevConsoleConstants.CONSOLE_INPUT_COLOR, "Stdin color", p));
+
+        addField(new ColorFieldEditor(PydevConsoleConstants.CONSOLE_PROMPT_COLOR, "Prompt color", p));
+
+        addField(new ColorFieldEditor(PydevConsoleConstants.CONSOLE_BACKGROUND_COLOR,
+                "Background color", p));
+
+        addField(new ColorFieldEditor(PydevConsoleConstants.DEBUG_CONSOLE_BACKGROUND_COLOR,
+                "Debug console background color", p));
 
         addField(new StringFieldEditor(PydevConsoleConstants.INTERACTIVE_CONSOLE_VM_ARGS,
                 "Vm Args for jython\n(used only on external\nprocess option):", p));
+
+        addField(new StringFieldEditor(PydevConsoleConstants.INTERACTIVE_CONSOLE_ENCODING,
+                "Encoding for interactive console:", p));
 
         addField(new IntegerFieldEditor(PydevConsoleConstants.INTERACTIVE_CONSOLE_MAXIMUM_CONNECTION_ATTEMPTS,
                 "Maximum connection attempts\nfor initial communication:", p));
 
         addField(new BooleanFieldEditor(PydevConsoleConstants.INTERACTIVE_CONSOLE_FOCUS_ON_CONSOLE_START,
                 "Focus console when it's started?", BooleanFieldEditor.SEPARATE_LABEL, p));
+
+        addField(new BooleanFieldEditor(PydevConsoleConstants.INTERACTIVE_CONSOLE_TAB_COMPLETION,
+                "Enable tab completion in interactive console?", BooleanFieldEditor.SEPARATE_LABEL, p));
 
         addField(new IntegerFieldEditor(
                 ScriptConsoleUIConstants.INTERACTIVE_CONSOLE_PERSISTENT_HISTORY_MAXIMUM_ENTRIES,
@@ -82,8 +82,8 @@ public class InteractiveConsolePrefs extends FieldEditorPreferencePage implement
                 "Focus console when an evaluate\ncommand is sent from the editor?", BooleanFieldEditor.SEPARATE_LABEL,
                 p));
 
-        addField(new BooleanFieldEditor(PydevConsoleConstants.INTERACTIVE_CONSOLE_CONNECT_VARIABLE_VIEW,
-                "Connect console to Variables Debug View?", BooleanFieldEditor.SEPARATE_LABEL, p));
+        addField(new BooleanFieldEditor(PydevConsoleConstants.INTERACTIVE_CONSOLE_CONNECT_DEBUG_SESSION,
+                "Connect console to a Debug Session?", BooleanFieldEditor.SEPARATE_LABEL, p));
 
         addField(new ComboFieldEditor(PydevConsoleConstants.INTERACTIVE_CONSOLE_ENABLE_GUI_ON_STARTUP,
                 "Enable GUI event loop integration?",
@@ -123,13 +123,22 @@ public class InteractiveConsolePrefs extends FieldEditorPreferencePage implement
                 PydevConsoleConstants.INTERACTIVE_CONSOLE_FOCUS_ON_SEND_COMMAND);
     }
 
-    public static boolean getConsoleConnectVariableView() {
+    public static boolean getTabCompletionInInteractiveConsole() {
+        PydevDebugPlugin plugin = PydevDebugPlugin.getDefault();
+        if (plugin != null) {
+            return plugin.getPreferenceStore().getBoolean(PydevConsoleConstants.INTERACTIVE_CONSOLE_TAB_COMPLETION);
+        } else {
+            return PydevConsoleConstants.DEFAULT_INTERACTIVE_CONSOLE_TAB_COMPLETION;
+        }
+    }
+
+    public static boolean getConsoleConnectDebugSession() {
         if (SharedCorePlugin.inTestMode()) {
-            return PydevConsoleConstants.DEFAULT_INTERACTIVE_CONSOLE_CONNECT_VARIABLE_VIEW;
+            return PydevConsoleConstants.DEFAULT_INTERACTIVE_CONSOLE_CONNECT_DEBUG_SESSION;
         }
         PydevDebugPlugin plugin = PydevDebugPlugin.getDefault();
         return plugin.getPreferenceStore().getBoolean(
-                PydevConsoleConstants.INTERACTIVE_CONSOLE_CONNECT_VARIABLE_VIEW);
+                PydevConsoleConstants.INTERACTIVE_CONSOLE_CONNECT_DEBUG_SESSION);
     }
 
     public static boolean getSendCommandOnCreationFromEditor() {

@@ -74,6 +74,13 @@ public class PyParser30Test extends PyParserTestBase {
         parseLegalDocStr(s);
     }
 
+    public void testUnicodeAcceptedAgain() {
+        String s = "" +
+                "a = u'error'\n" + //3.3 accepts it again.
+                "";
+        parseLegalDocStr(s);
+    }
+
     public void testMetaClass() {
         String s = "" +
                 "class IOBase(metaclass=abc.ABCMeta):\n" +
@@ -670,5 +677,113 @@ public class PyParser30Test extends PyParserTestBase {
         String s = "";
 
         parseLegalDocStr(s);
+    }
+
+    public void testIllegal() throws Exception {
+        String s = ""
+                + "a = dict(\n"
+                + " foo.bar = 1\n"
+                + ")\n"
+                + "";
+        Throwable parseILegalDocStrError = parseILegalDocStr(s);
+        assertTrue(!parseILegalDocStrError.toString().contains("ClassCastException"));
+    }
+
+    public void testListRemainder() throws Exception {
+        String s = ""
+                + "(first, middle, *last) = lst"
+                + "";
+        parseLegalDocStr(s);
+        parseLegalDocStrWithoutTree(s);
+    }
+
+    public void testAsync() throws Exception {
+        String s = ""
+                + "async def m1():\n"
+                + "    pass";
+        parseLegalDocStr(s);
+        parseLegalDocStrWithoutTree(s);
+    }
+
+    public void testAsync1() throws Exception {
+        String s = ""
+                + "@param\n"
+                + "async def m1():\n"
+                + "    pass";
+        parseLegalDocStr(s);
+        parseLegalDocStrWithoutTree(s);
+    }
+
+    public void testAsync2() throws Exception {
+        String s = ""
+                + "async with a:\n"
+                + "    pass";
+        parseLegalDocStr(s);
+        parseLegalDocStrWithoutTree(s);
+    }
+
+    public void testAsync3() throws Exception {
+        String s = ""
+                + "async with a:\n"
+                + "    pass";
+        parseLegalDocStr(s);
+        parseLegalDocStrWithoutTree(s);
+    }
+
+    public void testAwait() throws Exception {
+        String s = ""
+                + "async with a:\n"
+                + "    b = await foo()";
+        parseLegalDocStr(s);
+        parseLegalDocStrWithoutTree(s);
+    }
+
+    public void testDotOperator() throws Exception {
+        String s = ""
+                + "a = a @ a"
+                + "";
+        parseLegalDocStr(s);
+        parseLegalDocStrWithoutTree(s);
+    }
+
+    public void testDotOperator2() throws Exception {
+        String s = ""
+                + "a @= a"
+                + "";
+        parseLegalDocStr(s);
+        parseLegalDocStrWithoutTree(s);
+    }
+
+    public void testAcceptKwargsOnClass() throws Exception {
+        String s = ""
+                + "class F(**args):\n"
+                + "    pass"
+                + "";
+        parseLegalDocStr(s);
+        parseLegalDocStrWithoutTree(s);
+    }
+
+    public void testAcceptKwargsAsParam() throws Exception {
+        String s = ""
+                + "dict(**{'1':1})\n"
+                + "";
+        parseLegalDocStr(s);
+        parseLegalDocStrWithoutTree(s);
+    }
+
+    public void testAsyncNotKeyword() throws Exception {
+        String s = ""
+                + "class async(object):\n"
+                + "    pass";
+        parseLegalDocStr(s);
+        parseLegalDocStrWithoutTree(s);
+    }
+
+    public void testAwaitNotKeyword() throws Exception {
+        String s = ""
+                + "class await(object):\n"
+                + "    pass";
+        parseLegalDocStr(s);
+        parseLegalDocStrWithoutTree(s);
     }
 }

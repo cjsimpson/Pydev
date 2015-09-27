@@ -8,12 +8,19 @@ package org.python.pydev.shared_interactive_console.console.ui.internal;
 
 import org.eclipse.jface.text.IDocument;
 import org.python.pydev.shared_interactive_console.console.ui.IConsoleStyleProvider;
+import org.python.pydev.shared_interactive_console.console.ui.IScriptConsoleSession;
 
 /**
  * Interface created just so that we can test the ScriptConsoleDocument listener (with the interfaces
  * it relies from the IScriptConsoleViewer2
  */
 public interface IScriptConsoleViewer2ForDocumentListener {
+
+    int getCommandLineOffset();
+
+    int getConsoleWidthInCharacters();
+
+    int getCaretOffset();
 
     void setCaretOffset(int length, boolean async);
 
@@ -22,5 +29,7 @@ public interface IScriptConsoleViewer2ForDocumentListener {
     IDocument getDocument();
 
     void revealEndOfDocument();
+
+    IScriptConsoleSession getConsoleSession();
 
 }

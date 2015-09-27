@@ -5,10 +5,21 @@
 	<projects>
 	</projects>
 	<buildSpec>
+		<buildCommand>
+			<name>org.python.pydev.PyDevBuilder</name>
+			<arguments>
+			</arguments>
+		</buildCommand>
 	</buildSpec>
 	<natures>
+		<nature>org.python.pydev.pythonNature</nature>
 	</natures>
 	<linkedResources>
+		<link>
+			<name>.gitignore</name>
+			<type>1</type>
+			<locationURI>$%7BPARENT-1-PROJECT_LOC%7D/.gitignore</locationURI>
+		</link>
 		<link>
 			<name>.travis.yml</name>
 			<type>1</type>

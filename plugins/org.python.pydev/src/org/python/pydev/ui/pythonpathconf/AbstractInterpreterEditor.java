@@ -62,32 +62,37 @@ import org.eclipse.swt.widgets.Widget;
 import org.python.copiedfromeclipsesrc.PythonListEditor;
 import org.python.pydev.core.IInterpreterInfo;
 import org.python.pydev.core.IInterpreterManager;
+import org.python.pydev.core.IInterpreterManagerListener;
 import org.python.pydev.core.PropertiesHelper;
-import org.python.pydev.core.docutils.StringUtils;
 import org.python.pydev.core.log.Log;
 import org.python.pydev.jython.IPythonInterpreter;
 import org.python.pydev.jython.JythonPlugin;
 import org.python.pydev.plugin.PydevPlugin;
+import org.python.pydev.shared_core.callbacks.ICallback;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_core.structure.Tuple;
 import org.python.pydev.shared_ui.ImageCache;
 import org.python.pydev.shared_ui.UIConstants;
 import org.python.pydev.shared_ui.utils.AsynchronousProgressMonitorDialog;
+import org.python.pydev.shared_ui.utils.RunInUiThread;
+import org.python.pydev.tree.EnabledTreeDragReorder;
 import org.python.pydev.ui.TabVariables;
 import org.python.pydev.ui.dialogs.InterpreterInputDialog;
+import org.python.pydev.ui.dialogs.PyDialogHelpers;
 import org.python.pydev.ui.filetypes.FileTypesPreferencesPage;
 
 /**
  * Field editor for a list of python interpreter with executable verifier.
- * 
+ *
  * <p>
  * heavily inspired by org.eclipse.jface.preference.PathEditor
  * <p>
  * Tries to run python binary to make sure it exists
- * 
+ *
  * Subclasses must implement :<code>parseString</code>,<code>createList</code>,<code>getNewInputObject</code>
  */
 
-public abstract class AbstractInterpreterEditor extends PythonListEditor {
+public abstract class AbstractInterpreterEditor extends PythonListEditor implements IInterpreterManagerListener {
 
     /**
      * Interpreter manager we are using (given at init)
@@ -122,6 +127,7 @@ public abstract class AbstractInterpreterEditor extends PythonListEditor {
     private SelectionListener selectionListenerSystem;
 
     private Map<String, IInterpreterInfo> nameToInfo = new HashMap<String, IInterpreterInfo>();
+
     public Map<String, IInterpreterInfo> getNameToInfo() {
         return nameToInfo;
     }
@@ -182,7 +188,7 @@ public abstract class AbstractInterpreterEditor extends PythonListEditor {
 
     /**
      * Creates a path field editor linked to the preference name passed
-     * 
+     *
      * @param labelText the label text of the field editor
      * @param parent the parent of the field editor's control
      */
@@ -192,6 +198,7 @@ public abstract class AbstractInterpreterEditor extends PythonListEditor {
         this.interpreterManager = interpreterManager;
 
         IInterpreterInfo[] interpreters = this.interpreterManager.getInterpreterInfos();
+        this.interpreterManager.addListener(this);
         clearInfos();
         for (IInterpreterInfo interpreterInfo : interpreters) {
             if (interpreterInfo != null) {
@@ -301,6 +308,29 @@ public abstract class AbstractInterpreterEditor extends PythonListEditor {
             treeWithLibs.addDisposeListener(new DisposeListener() {
                 public void widgetDisposed(DisposeEvent event) {
                     treeWithLibs = null;
+                }
+            });
+            EnabledTreeDragReorder.enableDrag(treeWithLibs, false, new ICallback<Object, Object>() {
+
+                @Override
+                public Object call(Object arg) {
+                    if (treeWithInterpreters.getSelectionCount() == 1) {
+                        TreeItem[] selection = treeWithInterpreters.getSelection();
+                        String nameFromTreeItem = getNameFromTreeItem(selection[0]);
+                        InterpreterInfo info = (InterpreterInfo) nameToInfo.get(nameFromTreeItem);
+                        exeOrJarOfInterpretersToRestore.add(info.getExecutableOrJar());
+
+                        info.libs.clear();
+                        TreeItem[] items = treeWithLibs.getItems();
+                        if (items.length == 1) {
+                            TreeItem treeItem = items[0];
+                            TreeItem[] items2 = treeItem.getItems();
+                            for (TreeItem treeItem2 : items2) {
+                                info.libs.add(treeItem2.getText(0));
+                            }
+                        }
+                    }
+                    return null;
                 }
             });
         }
@@ -628,7 +658,7 @@ public abstract class AbstractInterpreterEditor extends PythonListEditor {
         composite.setLayout(new GridLayout(2, false));
 
         Label l1 = new Label(parent, SWT.None);
-        l1.setText("System PYTHONPATH");
+        l1.setText("System PYTHONPATH.   Reorder with Drag && Drop.");
         gd = new GridData();
         gd.horizontalSpan = 2;
         l1.setLayoutData(gd);
@@ -654,7 +684,7 @@ public abstract class AbstractInterpreterEditor extends PythonListEditor {
 
     /**
      * Returns this field editor's button box containing the Add Source Folder, Add Jar and Remove
-     * 
+     *
      * @param parent the parent control
      * @return the button box
      */
@@ -697,7 +727,7 @@ public abstract class AbstractInterpreterEditor extends PythonListEditor {
 
     /**
      * Returns this field editor's selection listener. The listener is created if necessary.
-     * 
+     *
      * @return the selection listener
      */
     private SelectionListener getSelectionListenerSystem() {
@@ -718,7 +748,9 @@ public abstract class AbstractInterpreterEditor extends PythonListEditor {
                             String filePath = dialog.open();
                             if (filePath != null) {
                                 lastDirectoryDialogPath = filePath;
-                                info.libs.add(filePath);
+                                if (!info.libs.contains(filePath)) {
+                                    info.libs.add(filePath);
+                                }
                             }
 
                         } else if (widget == addBtSystemJar) {
@@ -771,10 +803,10 @@ public abstract class AbstractInterpreterEditor extends PythonListEditor {
 
     /**
      * Helper method to create a push button.
-     * 
+     *
      * @param parent the parent control
      * @param key the resource name used to supply the button's label text
-     * @param listenerToAdd 
+     * @param listenerToAdd
      * @return Button
      */
     /*default*/Button createBt(Composite parent, String key, SelectionListener listenerToAdd) {
@@ -816,7 +848,7 @@ public abstract class AbstractInterpreterEditor extends PythonListEditor {
 
     /**
      * @param s
-     * 
+     *
      */
     private void fillPathItemsFromName(String name) {
         treeWithLibs.removeAll();
@@ -857,6 +889,7 @@ public abstract class AbstractInterpreterEditor extends PythonListEditor {
                     TreeItem subItem = new TreeItem(item, SWT.NONE);
                     subItem.setText(iter.next());
                     subItem.setImage(imageSystemLib);
+                    subItem.setData(EnabledTreeDragReorder.DRAG_IMAGE_DATA_KEY, UIConstants.LIB_SYSTEM);
                 }
                 item.setExpanded(true);
 
@@ -888,55 +921,61 @@ public abstract class AbstractInterpreterEditor extends PythonListEditor {
     public abstract IInterpreterProviderFactory.InterpreterType getInterpreterType();
 
     @Override
-    protected Tuple<String, String> getNewInputObject(boolean autoConfig) {
+    protected Tuple<String, String> getNewInputObject(int configType) {
         CharArrayWriter charWriter = new CharArrayWriter();
         PrintWriter logger = new PrintWriter(charWriter);
-        logger.println("Information about process of adding new interpreter:");
         try {
-            final Tuple<String, String> interpreterNameAndExecutable;
-            if (autoConfig) {
-                interpreterNameAndExecutable = AutoConfigMaker.autoConfig(getInterpreterType(), cancelException);
-                interpreterNameAndExecutable.o1 = getUniqueInterpreterName(interpreterNameAndExecutable.o1);
+            ObtainInterpreterInfoOperation operation = null;
+            if (configType != InterpreterConfigHelpers.CONFIG_MANUAL) {
+                //Auto-config
+                AutoConfigMaker a = new AutoConfigMaker(getInterpreterType(),
+                        configType == InterpreterConfigHelpers.CONFIG_ADV_AUTO, logger,
+                        nameToInfo);
+                operation = a.autoConfigSearch();
             } else {
-                interpreterNameAndExecutable = newConfig(logger);
-            }
-            if (interpreterNameAndExecutable == null) {
-                return null;
-            }
-
-            boolean foundError = InterpreterConfigHelpers.checkInterpreterNameAndExecutable(
-                    interpreterNameAndExecutable, logger, "Error getting info on interpreter",
-                    nameToInfo, this.getShell());
-
-            if (foundError) {
-                return null;
-            }
-
-            logger.println("- Chosen interpreter (name and file):'" + interpreterNameAndExecutable);
-
-            if (interpreterNameAndExecutable != null && interpreterNameAndExecutable.o2 != null) {
-                //ok, now that we got the file, let's see if it is valid and get the library info.
-                ObtainInterpreterInfoOperation operation = InterpreterConfigHelpers.findInterpreter(
-                        interpreterNameAndExecutable, interpreterManager,
-                        autoConfig, logger, nameToInfo, this.getShell());
-
-                if (operation != null) {
-                    String newName = operation.result.getName();
-                    this.nameToInfo.put(newName, operation.result.makeCopy());
-                    exeOrJarOfInterpretersToRestore.add(operation.result.executableOrJar);
-
-                    return new Tuple<String, String>(operation.result.getName(),
-                            operation.result.executableOrJar);
-                } else {
+                //Manual config
+                logger.println("Information about process of adding new interpreter:");
+                Tuple<String, String> interpreterNameAndExecutable = newConfig(logger);
+                if (interpreterNameAndExecutable == null) {
                     return null;
                 }
+                interpreterNameAndExecutable.o1 = InterpreterConfigHelpers.getUniqueInterpreterName(
+                        interpreterNameAndExecutable.o1, nameToInfo);
+                boolean foundError = InterpreterConfigHelpers.checkInterpreterNameAndExecutable(
+                        interpreterNameAndExecutable, logger, "Error getting info on interpreter",
+                        nameToInfo, this.getShell());
+
+                if (foundError) {
+                    return null;
+                }
+
+                logger.println("- Chosen interpreter (name and file):'" + interpreterNameAndExecutable);
+
+                if (interpreterNameAndExecutable != null && interpreterNameAndExecutable.o2 != null) {
+                    //ok, now that we got the file, let's see if it is valid and get the library info.
+                    operation = InterpreterConfigHelpers.tryInterpreter(
+                            interpreterNameAndExecutable, interpreterManager,
+                            false, true, logger, this.getShell());
+                }
+            }
+
+            if (operation != null) {
+                String newName = operation.result.getName();
+                this.nameToInfo.put(newName, operation.result.makeCopy());
+                exeOrJarOfInterpretersToRestore.add(operation.result.executableOrJar);
+
+                return new Tuple<String, String>(operation.result.getName(),
+                        operation.result.executableOrJar);
             }
 
         } catch (Exception e) {
             Log.log(e);
             return null;
         } finally {
-            Log.logInfo(charWriter.toString());
+            String logInfo = charWriter.toString();
+            if (logInfo.length() > 0) {
+                Log.logInfo(charWriter.toString());
+            }
         }
 
         return null;
@@ -956,20 +995,6 @@ public abstract class AbstractInterpreterEditor extends PythonListEditor {
 
     }
 
-    /**
-     * Gets a unique name for the interpreter based on an initial expected name.
-     */
-    public String getUniqueInterpreterName(final String expectedName) {
-        String additional = "";
-        int i = 0;
-        while (InterpreterConfigHelpers.getDuplicatedMessageError(
-                expectedName + additional, null, nameToInfo) != null) {
-            i++;
-            additional = String.valueOf(i);
-        }
-        return expectedName + additional;
-    }
-
     public static final class CancelException extends Exception {
 
         private static final long serialVersionUID = 1L;
@@ -986,6 +1011,7 @@ public abstract class AbstractInterpreterEditor extends PythonListEditor {
     @Override
     protected void doLoad() {
         if (treeWithInterpreters != null) {
+            treeWithInterpreters.removeAll();
             //Work with a copy of the interpreters actually configured.
             String s = interpreterManager.getPersistedString();
             IInterpreterInfo[] array = interpreterManager.getInterpretersFromPersistedString(s);
@@ -999,6 +1025,31 @@ public abstract class AbstractInterpreterEditor extends PythonListEditor {
         updateTree();
     }
 
+    /**
+     * Called after infos are set (changed) in the interpreter manager.
+     */
+    public void afterSetInfos(IInterpreterManager manager, IInterpreterInfo[] interpreterInfos) {
+        synchronized (expectedSetLock) {
+            if (expectedSetInfos == 0) {
+                RunInUiThread.async(new Runnable() {
+
+                    @Override
+                    public void run() {
+                        if (treeWithInterpreters != null && !treeWithInterpreters.isDisposed()) {
+                            //If the UI is not current (i.e.: tree is not visible), don't bother asking...
+                            if (!treeWithInterpreters.isVisible()
+                                    || PyDialogHelpers
+                                            .openQuestion("Info changed",
+                                                    "Information on interpreters changed. Update UI?\nNote: if there's any change done in the UI it'll be lost.")) {
+                                doLoad();
+                            }
+                        }
+                    }
+                }, true);
+            }
+        }
+    }
+
     @Override
     public String getPreferenceName() {
         throw new RuntimeException(
@@ -1010,7 +1061,22 @@ public abstract class AbstractInterpreterEditor extends PythonListEditor {
      */
     @Override
     protected void doLoadDefault() {
-        //do nothing
+        doLoad();
+    }
+
+    private int expectedSetInfos = 0;
+    private final Object expectedSetLock = new Object();
+
+    public void pushExpectedSetInfos() {
+        synchronized (expectedSetLock) {
+            this.expectedSetInfos -= 1;
+        }
+    }
+
+    public void popExpectedSetInfos() {
+        synchronized (expectedSetLock) {
+            this.expectedSetInfos += 1;
+        }
     }
 
 }

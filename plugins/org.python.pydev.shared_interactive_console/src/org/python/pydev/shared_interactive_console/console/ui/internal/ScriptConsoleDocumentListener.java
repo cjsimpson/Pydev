@@ -12,6 +12,11 @@ import java.util.Iterator;
 import java.util.List;
 
 import org.eclipse.core.runtime.Assert;
+import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.Status;
+import org.eclipse.core.runtime.jobs.ISchedulingRule;
+import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.debug.ui.console.IConsoleLineTracker;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.Document;
@@ -21,9 +26,11 @@ import org.eclipse.jface.text.IDocumentListener;
 import org.eclipse.jface.text.IDocumentPartitioner;
 import org.eclipse.jface.text.Region;
 import org.eclipse.jface.text.TextUtilities;
+import org.eclipse.jface.text.contentassist.ICompletionProposal;
 import org.python.pydev.shared_core.callbacks.ICallback;
 import org.python.pydev.shared_core.log.Log;
 import org.python.pydev.shared_core.string.FastStringBuffer;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_core.string.TextSelectionUtils;
 import org.python.pydev.shared_core.structure.Tuple;
 import org.python.pydev.shared_core.utils.DocCmd;
@@ -31,13 +38,14 @@ import org.python.pydev.shared_interactive_console.console.InterpreterResponse;
 import org.python.pydev.shared_interactive_console.console.ScriptConsoleHistory;
 import org.python.pydev.shared_interactive_console.console.ScriptConsolePrompt;
 import org.python.pydev.shared_interactive_console.console.ui.IConsoleStyleProvider;
+import org.python.pydev.shared_interactive_console.console.ui.IScriptConsoleSession;
 import org.python.pydev.shared_interactive_console.console.ui.ScriptConsolePartitioner;
 import org.python.pydev.shared_interactive_console.console.ui.ScriptStyleRange;
 import org.python.pydev.shared_ui.utils.RunInUiThread;
 
 /**
  * This class will listen to the document and will:
- * 
+ *
  * - pass the commands to the handler
  * - add the results from the handler
  * - show the prompt
@@ -51,7 +59,9 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
 
     private ScriptConsoleHistory history;
 
-    private int offset;
+    private int readOnlyColumnsInCurrentBeforePrompt;
+
+    private int historyFullLine;
 
     /**
      * Document to which this listener is attached.
@@ -69,6 +79,8 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
      * The commands that should be initially set in the console
      */
     private String initialCommands;
+
+    private volatile boolean promptReady;
 
     /**
      * @return the last time the document that this console was listening to was changed.
@@ -103,7 +115,7 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
 
     /**
      * Stops listening changes in one document and starts listening another one.
-     * 
+     *
      * @param oldDoc may be null (if not null, this class will stop listening changes in it).
      * @param newDoc the document that should be listened from now on.
      */
@@ -143,7 +155,7 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
 
     /**
      * Clear the document and show the initial prompt.
-     * @param addInitialCommands indicates if the initial commands should be appended to the document. 
+     * @param addInitialCommands indicates if the initial commands should be appended to the document.
      */
     public void clear(boolean addInitialCommands) {
         startDisconnected();
@@ -156,7 +168,7 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
 
         if (addInitialCommands) {
             try {
-                doc.replace(doc.getLength(), 0, this.initialCommands);
+                doc.replace(doc.getLength(), 0, this.initialCommands + "\n");
             } catch (BadLocationException e) {
                 Log.log(e);
             }
@@ -165,7 +177,7 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
 
     /**
      * Adds some other viewer for the same document.
-     * 
+     *
      * @param scriptConsoleViewer this is the viewer that should be added as a second viewer for the same
      * document.
      */
@@ -175,14 +187,14 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
 
     /**
      * Constructor
-     * 
+     *
      * @param viewer this is the viewer to which this listener is attached. It's the main viewer. Other viewers
      * may be added later through addViewer() for sharing the same listener and being properly updated.
-     * 
+     *
      * @param handler this is the object that'll handle the commands
      * @param prompt shows the prompt to the user
      * @param history keeps track of the commands added by the user.
-     * @param initialCommands the commands that should be initially added 
+     * @param initialCommands the commands that should be initially added
      */
     public ScriptConsoleDocumentListener(IScriptConsoleViewer2ForDocumentListener viewer, ICommandHandler handler,
             ScriptConsolePrompt prompt, ScriptConsoleHistory history, List<IConsoleLineTracker> consoleLineTrackers,
@@ -199,18 +211,113 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
 
         this.viewer = viewer;
 
-        this.offset = 0;
+        this.readOnlyColumnsInCurrentBeforePrompt = 0;
+
+        this.historyFullLine = 0;
 
         this.doc = null;
 
         this.consoleLineTrackers = consoleLineTrackers;
 
         this.initialCommands = initialCommands;
+
+        final ICallback<Object, Tuple<String, String>> onContentsReceived = new ICallback<Object, Tuple<String, String>>() {
+
+            public Object call(final Tuple<String, String> result) {
+                if (result.o1.length() > 0 || result.o2.length() > 0) {
+                    Runnable runnable = new Runnable() {
+
+                        public void run() {
+                            startDisconnected();
+                            PromptContext pc;
+                            try {
+                                pc = removeUserInput();
+                                IScriptConsoleSession consoleSession = ScriptConsoleDocumentListener.this.viewer
+                                        .getConsoleSession();
+                                if (result.o1.length() > 0) {
+                                    if (consoleSession != null) {
+                                        consoleSession.onStdoutContentsReceived(result.o1);
+                                    }
+                                    addToConsoleView(result.o1, true, true);
+                                }
+                                if (result.o2.length() > 0) {
+                                    if (consoleSession != null) {
+                                        consoleSession.onStderrContentsReceived(result.o2);
+                                    }
+                                    addToConsoleView(result.o2, false, true);
+                                }
+                                if (pc.removedPrompt) {
+                                    appendInvitation(false);
+                                }
+                            } finally {
+                                stopDisconnected();
+                            }
+
+                            if (pc.removedPrompt) {
+                                appendText(pc.userInput);
+                                ScriptConsoleDocumentListener.this.viewer.setCaretOffset(doc.getLength()
+                                        - pc.cursorOffset, false);
+                            }
+
+                        }
+                    };
+                    RunInUiThread.async(runnable);
+                }
+                return null;
+            }
+
+        };
+
+        handler.setOnContentsReceivedCallback(onContentsReceived);
+    }
+
+    private class PromptContext {
+        public boolean removedPrompt;
+        // offset from the end of the document.
+        public int cursorOffset;
+        public String userInput;
+
+        public PromptContext(boolean removedPrompt, int cursorOffset, String userInput) {
+            this.removedPrompt = removedPrompt;
+            this.cursorOffset = cursorOffset;
+            this.userInput = userInput;
+        }
+    }
+
+    protected PromptContext removeUserInput() {
+        if (!promptReady) {
+            return new PromptContext(false, -1, "");
+        }
+
+        PromptContext pc = new PromptContext(true, -1, "");
+        try {
+            int lastLine = doc.getNumberOfLines() - 1;
+            int lastLineLength = doc.getLineLength(lastLine);
+            int end = doc.getLength();
+            int start = end - lastLineLength;
+            // There may be read-only content before the current input. so last line
+            // may look like:
+            // Out[10]: >>> some_user_command
+            // The content before the prompt should be treated as read-only.
+            int promptOffset = doc.get(start, lastLineLength).indexOf(prompt.toString());
+            start += promptOffset;
+            lastLineLength -= promptOffset;
+
+            pc.userInput = doc.get(start, lastLineLength);
+            pc.cursorOffset = end - viewer.getCaretOffset();
+            doc.replace(start, lastLineLength, "");
+
+            pc.userInput = pc.userInput.replace(prompt.toString(), "");
+
+        } catch (BadLocationException e) {
+            e.printStackTrace();
+        }
+        return pc;
     }
 
     /**
      * Set the document that this class should listen.
-     * 
+     *
      * @param doc the document that should be used in the console.
      */
     public void setDocument(IDocument doc) {
@@ -218,7 +325,7 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
     }
 
     /**
-     * Ignore 
+     * Ignore
      */
     public void documentAboutToBeChanged(DocumentEvent event) {
 
@@ -226,19 +333,19 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
 
     /**
      * Process the result that came from pushing some text to the interpreter.
-     * 
+     *
      * @param result the response from the interpreter after sending some command for it to process.
      */
     protected void processResult(final InterpreterResponse result) {
         if (result != null) {
-            addToConsoleView(result.out, true);
-            addToConsoleView(result.err, false);
-
             history.commit();
             try {
-                offset = getLastLineLength();
+                readOnlyColumnsInCurrentBeforePrompt = getLastLineLength();
             } catch (BadLocationException e) {
                 Log.log(e);
+            }
+            if (!result.more) {
+                historyFullLine = history.getAsList().size();
             }
         }
         appendInvitation(false);
@@ -246,11 +353,11 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
 
     /**
      * Adds some text that came as an output to stdout or stderr to the console.
-     * 
+     *
      * @param out the text that should be added
      * @param stdout true if it came from stdout and also if it came from stderr
      */
-    private void addToConsoleView(String out, boolean stdout) {
+    private void addToConsoleView(String out, boolean stdout, boolean textAddedIsReadOnly) {
         if (out.length() == 0) {
             return; //nothing to add!
         }
@@ -272,6 +379,16 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
         }
         if (style != null) {
             appendText(style.o2);
+            if (textAddedIsReadOnly) {
+                try {
+                    // The text we just appended can't be changed!
+                    int lastLine = doc.getNumberOfLines() - 1;
+                    int len = doc.getLineLength(lastLine);
+                    this.readOnlyColumnsInCurrentBeforePrompt = len;
+                } catch (BadLocationException e) {
+                    Log.log(e);
+                }
+            }
         }
 
         TextSelectionUtils ps = new TextSelectionUtils(doc, start);
@@ -293,14 +410,15 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
                 Log.log(e);
             }
         }
+        revealEndOfDocument();
     }
 
     /**
      * Adds a given style range to the partitioner.
-     * 
-     * Note that the style must be added before the actual text is added! (because as 
+     *
+     * Note that the style must be added before the actual text is added! (because as
      * soon as it's added, the style is asked for).
-     *  
+     *
      * @param style the style to be added.
      */
     private void addToPartitioner(ScriptStyleRange style) {
@@ -313,9 +431,9 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
 
     /**
      * Should be called right after adding some text to the console (it'll actually go on,
-     * remove the text just added and add it line-by-line in the document so that it can be 
+     * remove the text just added and add it line-by-line in the document so that it can be
      * correctly treated in the console).
-     * 
+     *
      * @param offset the offset where the addition took place
      * @param text the text that should be adedd
      */
@@ -375,9 +493,9 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
             Log.log(e);
         }
 
-        text = text.replaceAll("\r\n|\n|\r", delim); //$NON-NLS-1$
+        text = StringUtils.replaceNewLines(text, delim);
 
-        //now, add it line-by-line (it won't even get into the loop if there's no 
+        //now, add it line-by-line (it won't even get into the loop if there's no
         //new line in the text added).
         int start = 0;
         int index = -1;
@@ -408,7 +526,7 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
      * Here is where we run things not using the UI thread. It's a recursive function. In summary, it'll
      * run each line in the commands received in a new thread, and as each finishes, it calls itself again
      * for the next command. The last command will reconnect to the document.
-     * 
+     *
      * Exceptions had to be locally handled, because they're not well tolerated under this scenario
      * (if on of the callbacks fail, the others won't be executed and we'd get into a situation
      * where the shell becomes unusable).
@@ -426,7 +544,7 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
         history.update(commandLine);
 
         // handle the command line:
-        // When the user presses a return and goes to a new line,  the contents of the current line are sent to 
+        // When the user presses a return and goes to a new line,  the contents of the current line are sent to
         // the interpreter (and its results properly handled).
 
         appendText(getDelimeter());
@@ -443,7 +561,9 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
                         try {
                             processResult(arg);
                             if (finalAddedNewLine) {
-                                IDocument historyDoc = history.getAsDoc();
+                                List<String> historyList = history.getAsList();
+                                IDocument historyDoc = new Document(StringUtils.join("\n",
+                                        historyList.subList(historyFullLine, historyList.size())) + "\n");
                                 int currHistoryLen = historyDoc.getLength();
                                 if (currHistoryLen > 0) {
                                     DocCmd docCmd = new DocCmd(currHistoryLen - 1, 0, finalDelim);
@@ -465,7 +585,8 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
                         } else {
                             //last one
                             try {
-                                onAfterAllLinesHandled(text, addedParen, start, offset, addedCloseParen,
+                                onAfterAllLinesHandled(text, addedParen, start, readOnlyColumnsInCurrentBeforePrompt,
+                                        addedCloseParen,
                                         finalIndentString[0], newDeltaCaretPosition);
                             } finally {
                                 //We must disconnect
@@ -479,31 +600,161 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
             }
         };
 
-        final ICallback<Object, Tuple<String, String>> onContentsReceived = new ICallback<Object, Tuple<String, String>>() {
+        handler.beforeHandleCommand(commandLine, onResponseReceived);
 
-            public Object call(final Tuple<String, String> result) {
-                Runnable runnable = new Runnable() {
+        //Handle the command in a thread that doesn't block the U/I.
+        Job j = new Job("PyDev Console Hander") {
+            @Override
+            protected IStatus run(IProgressMonitor monitor) {
+                promptReady = false;
+                handler.handleCommand(commandLine, onResponseReceived);
+                return Status.OK_STATUS;
+            };
+        };
+        j.setSystem(true);
+        j.schedule();
+    }
 
+    private static class TabCompletionSingletonRule implements ISchedulingRule {
+        public boolean contains(ISchedulingRule rule) {
+            return rule == this;
+        }
+
+        public boolean isConflicting(ISchedulingRule rule) {
+            return rule instanceof TabCompletionSingletonRule;
+        }
+    }
+
+    /**
+     * Attempts to query the console backend (ipython) for completions
+     * and update the console's cursor as appropriate.
+     */
+    public void handleConsoleTabCompletions() {
+        final String commandLine = getCommandLine();
+        final int commandLineOffset = viewer.getCommandLineOffset();
+        final int caretOffset = viewer.getCaretOffset();
+
+        // Don't block the UI when talking to the console
+        Job j = new Job("Async Fetch completions") {
+
+            @Override
+            protected IStatus run(IProgressMonitor monitor) {
+                ICompletionProposal[] completions = handler
+                        .getTabCompletions(commandLine, caretOffset - commandLineOffset);
+                if (completions.length == 0) {
+                    return Status.OK_STATUS;
+                }
+
+                // Evaluate all the completions
+                final List<String> compList = new ArrayList<String>();
+
+                //%cd is a special case already handled when converting it in
+                //org.python.pydev.debug.newconsole.PydevConsoleCommunication.convertToICompletions(String, String, int, Object, List<ICompletionProposal>, boolean)
+                //So, don't consider it 'magic' in this case.
+                boolean magicCommand = commandLine.startsWith("%") && !commandLine.startsWith("%cd ");
+
+                for (ICompletionProposal completion : completions) {
+                    boolean magicCompletion = completion.getDisplayString().startsWith("%");
+
+                    Document doc = new Document(commandLine.substring((magicCommand && magicCompletion) ? 1 : 0));
+                    completion.apply(doc);
+                    String out = doc.get().substring((magicCommand && !magicCompletion) ? 1 : 0);
+                    if (out.startsWith("_", out.lastIndexOf('.') + 1)
+                            && !commandLine.startsWith("_", commandLine.lastIndexOf('.') + 1)) {
+                        continue;
+                    }
+                    if (out.indexOf('(', commandLine.length()) != -1) {
+                        out = out.substring(0, out.indexOf('(', commandLine.length()));
+                    }
+                    compList.add(out);
+                }
+
+                // Discover the longest possible completion so we can zip up to it
+                String longestCommonPrefix = null;
+                for (String completion : compList) {
+                    if (!completion.startsWith(commandLine)) {
+                        continue;
+                    }
+                    // Calculate the longest common prefix so we can auto-complete at least up to there.
+                    if (longestCommonPrefix == null) {
+                        longestCommonPrefix = completion;
+                    } else {
+                        for (int i = 0; i < longestCommonPrefix.length() && i < completion.length(); i++) {
+                            if (longestCommonPrefix.charAt(i) != completion.charAt(i)) {
+                                longestCommonPrefix = longestCommonPrefix.substring(0, i);
+                                break;
+                            }
+                        }
+                        // Handle mismatched lengths: dir and dirs
+                        if (longestCommonPrefix.length() > completion.length()) {
+                            longestCommonPrefix = completion;
+                        }
+                    }
+                }
+                if (longestCommonPrefix == null) {
+                    longestCommonPrefix = commandLine;
+                }
+
+                // Calculate the maximum length of the completions for string formatting
+                int length = 0;
+                for (String completion : compList) {
+                    length = Math.max(length, completion.length());
+                }
+
+                final String fLongestCommonPrefix = longestCommonPrefix;
+                final int maxLength = length;
+                Runnable r = new Runnable() {
                     public void run() {
-                        if (result != null) {
-                            addToConsoleView(result.o1, true);
-                            addToConsoleView(result.o2, false);
-                            revealEndOfDocument();
+                        // Get the viewer width + format the auto-completion output appropriately
+                        int consoleWidth = viewer.getConsoleWidthInCharacters();
+                        int formatLength = maxLength + 4;
+                        int completionsPerLine = consoleWidth / formatLength;
+                        if (completionsPerLine <= 0) {
+                            completionsPerLine = 1;
+                        }
+
+                        String formatString = "%-" + formatLength + "s";
+                        StringBuilder sb = new StringBuilder("\n");
+                        int i = 0;
+                        for (String completion : compList) {
+                            sb.append(String.format(formatString, completion));
+                            if (++i % completionsPerLine == 0) {
+                                sb.append("\n");
+                            }
+                        }
+                        sb.append("\n");
+
+                        String currentCommand = getCommandLine();
+                        try {
+                            // disconnect the console so we can write content into it
+                            startDisconnected();
+
+                            // Add our completions to the console
+                            addToConsoleView(sb.toString(), true, true);
+
+                            // Re-add >>>
+                            appendInvitation(false);
+                        } finally {
+                            stopDisconnected();
+                        }
+
+                        // Auto-complete the command up to the longest common prefix (if it hasn't changed since we were last here)
+                        if (!currentCommand.equals(commandLine) || fLongestCommonPrefix.isEmpty()) {
+                            addToConsoleView(currentCommand, true, false);
+                        } else {
+                            addToConsoleView(fLongestCommonPrefix, true, false);
                         }
                     }
                 };
-                RunInUiThread.async(runnable);
-                return null;
-            }
+                RunInUiThread.async(r);
 
-        };
-        //Handle the command in a thread that doesn't block the U/I.
-        new Thread() {
-            @Override
-            public void run() {
-                handler.handleCommand(commandLine, onResponseReceived, onContentsReceived);
+                return Status.OK_STATUS;
             }
-        }.start();
+        };
+        j.setPriority(Job.INTERACTIVE);
+        j.setRule(new TabCompletionSingletonRule());
+        j.setSystem(true);
+        j.schedule();
     }
 
     /**
@@ -570,8 +821,8 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
     }
 
     /**
-     * Applies the style in the text for the contents that've been just added. 
-     * 
+     * Applies the style in the text for the contents that've been just added.
+     *
      * @param cmd
      * @param offset2
      */
@@ -603,7 +854,7 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
 
     /**
      * Appends some text at the end of the document.
-     * 
+     *
      * @param text the text to be added.
      */
     protected void appendText(String text) {
@@ -631,10 +882,11 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
         appendText(promptStr); //caret already updated
         setCaretOffset(doc.getLength(), async);
         revealEndOfDocument();
+        promptReady = true;
     }
 
     /**
-     * Shows the end of the document for the main viewer and all the related viewer for the same document. 
+     * Shows the end of the document for the main viewer and all the related viewer for the same document.
      */
     private void revealEndOfDocument() {
         viewer.revealEndOfDocument();
@@ -655,7 +907,7 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
     }
 
     /**
-     * Sets the caret offset to the passed offset for the main viewer and all the related viewer for the same document. 
+     * Sets the caret offset to the passed offset for the main viewer and all the related viewer for the same document.
      * @param offset the offset to which the caret should be moved
      */
     private void setCaretOffset(int offset, boolean async) {
@@ -697,7 +949,7 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
     }
 
     public int getLastLineReadOnlySize() {
-        return offset + prompt.toString().length();
+        return readOnlyColumnsInCurrentBeforePrompt + prompt.toString().length();
     }
 
     public int getCommandLineOffset() throws BadLocationException {
@@ -712,7 +964,7 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
     /**
      * @return the length of the current command line (all the currently
      * editable area)
-     * 
+     *
      * @throws BadLocationException
      */
     public int getCommandLineLength() throws BadLocationException {
@@ -755,13 +1007,40 @@ public class ScriptConsoleDocumentListener implements IDocumentListener {
     /**
      * Sets the current command line to be executed (but without executing it).
      * Used by the up/down arrow to set a previous/next command.
-     * 
+     *
      * @param command this is the command that should be in the command line.
-     * 
+     *
      * @throws BadLocationException
      */
     public void setCommandLine(String command) throws BadLocationException {
         doc.replace(getCommandLineOffset(), getCommandLineLength(), command);
+    }
+
+    public void discardCommandLine() {
+        if (!prompt.getNeedInput()) {
+            final String commandLine = getCommandLine();
+            if (!commandLine.isEmpty()) {
+                history.commit();
+            } else if (!prompt.getNeedMore()) {
+                return; // no command line; nothing to do
+            }
+        }
+        startDisconnected();
+        try {
+            try {
+                doc.replace(doc.getLength(), 0, "\n");
+            } catch (BadLocationException e) {
+                Log.log(e);
+            }
+            readOnlyColumnsInCurrentBeforePrompt = 0;
+
+            prompt.setMode(true);
+            prompt.setNeedInput(false);
+            appendInvitation(false);
+            viewer.setCaretOffset(doc.getLength(), false);
+        } finally {
+            stopDisconnected();
+        }
     }
 
 }

@@ -268,6 +268,37 @@ public class FastStringBufferTest extends TestCase {
         assertEquals(1, seq2.length());
     }
 
+    public void testIndexOf() throws Exception {
+        FastStringBuffer buf = new FastStringBuffer("aacc", 0);
+        assertEquals(0, buf.indexOf('a'));
+        assertEquals(0, buf.indexOf("aa"));
+        assertEquals(0, buf.indexOf("a"));
+        assertEquals(-1, buf.indexOf("b"));
+        assertEquals(2, buf.indexOf('c'));
+        assertEquals(2, buf.indexOf("c"));
+        assertEquals(2, buf.indexOf("cc"));
+        assertEquals(-1, buf.indexOf("ccc"));
+        assertEquals(-1, buf.indexOf("aaa"));
+        assertEquals(1, buf.indexOf("ac"));
+    }
+
+    public void testIndexOfFrom() throws Exception {
+        FastStringBuffer buf = new FastStringBuffer("aacc", 0);
+        assertEquals(0, buf.indexOf("aa", 0));
+        assertEquals(-1, buf.indexOf("aa", 1));
+        assertEquals(0, buf.indexOf("a", 0));
+        assertEquals(-1, buf.indexOf("b", 0));
+        assertEquals(2, buf.indexOf("c", 0));
+        assertEquals(2, buf.indexOf("cc", 0));
+        assertEquals(2, buf.indexOf("cc", 1));
+        assertEquals(2, buf.indexOf("cc", 2));
+        assertEquals(-1, buf.indexOf("cc", 3));
+        assertEquals(-1, buf.indexOf("cc", 10));
+        assertEquals(-1, buf.indexOf("ccc", 0));
+        assertEquals(-1, buf.indexOf("aaa", 0));
+        assertEquals(1, buf.indexOf("ac", 0));
+    }
+
     //    public void testFastString() throws Exception {
     //        
     //        long total=0;

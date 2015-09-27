@@ -20,6 +20,9 @@ def RunCog():
     
     import cog
     cog.RunCogInFiles([os.path.join(parent_dir, 'src', 'org', 'python', 'pydev', 'ui', 'ColorAndStyleCache.java')])
+    cog.RunCogInFiles([os.path.join(parent_dir, 'src','org','python','pydev','plugin','preferences','PydevPrefsInitializer.java')])
+    cog.RunCogInFiles([os.path.join(parent_dir, 'src', 'org', 'python', 'pydev', 'editor', 'codefolding', 'PyDevCodeFoldingPrefPage.java')])
+    cog.RunCogInFiles([os.path.join(parent_dir, 'plugin.xml')])
 
 
 #=======================================================================================================================

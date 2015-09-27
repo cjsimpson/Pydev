@@ -12,27 +12,30 @@
 ******************************************************************************/
 package com.python.pydev.analysis.system_info_builder;
 
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.core.runtime.IStatus;
-import org.eclipse.core.runtime.Status;
-import org.eclipse.core.runtime.jobs.Job;
+import org.eclipse.core.runtime.NullProgressMonitor;
 import org.python.pydev.core.IInterpreterManager;
+import org.python.pydev.core.IModulesManager;
+import org.python.pydev.core.IPythonNature;
+import org.python.pydev.core.ISystemModulesManager;
+import org.python.pydev.core.MisconfigurationException;
 import org.python.pydev.core.ModulesKey;
 import org.python.pydev.core.log.Log;
 import org.python.pydev.editor.codecompletion.revisited.ModulesFoundStructure;
+import org.python.pydev.editor.codecompletion.revisited.ModulesManager;
 import org.python.pydev.editor.codecompletion.revisited.PyPublicTreeMap;
 import org.python.pydev.editor.codecompletion.revisited.PythonPathHelper;
 import org.python.pydev.editor.codecompletion.revisited.SystemModulesManager;
 import org.python.pydev.logging.DebugSettings;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_core.structure.Tuple;
 import org.python.pydev.ui.pythonpathconf.IInterpreterInfoBuilder;
 import org.python.pydev.ui.pythonpathconf.InterpreterInfo;
 
 import com.python.pydev.analysis.additionalinfo.AbstractAdditionalDependencyInfo;
+import com.python.pydev.analysis.additionalinfo.AdditionalProjectInterpreterInfo;
 import com.python.pydev.analysis.additionalinfo.AdditionalSystemInterpreterInfo;
 
 /**
@@ -40,127 +43,140 @@ import com.python.pydev.analysis.additionalinfo.AdditionalSystemInterpreterInfo;
  */
 public class InterpreterInfoBuilder implements IInterpreterInfoBuilder {
 
-    static class InterpreterBuilderJob extends Job {
+    public BuilderResult syncInfoToPythonPath(IProgressMonitor monitor, IPythonNature nature) {
+        PythonPathHelper pythonPathHelper = (PythonPathHelper) nature.getAstManager().getModulesManager()
+                .getPythonPathHelper();
+        if (pythonPathHelper == null) {
+            return BuilderResult.OK;
+        }
+        AbstractAdditionalDependencyInfo additionalInfo;
+        try {
+            additionalInfo = AdditionalProjectInterpreterInfo.getAdditionalInfoForProject(nature);
+            IModulesManager modulesManager = nature.getAstManager().getModulesManager();
+            return this.syncInfoToPythonPath(monitor, pythonPathHelper, additionalInfo, modulesManager, null);
+        } catch (MisconfigurationException e) {
+            Log.log(e);
+            return BuilderResult.OK;
+        }
+    }
 
-        public InterpreterBuilderJob() {
-            super("InterpreterBuilderJob");
-            this.setPriority(Job.BUILD);
+    public BuilderResult syncInfoToPythonPath(IProgressMonitor monitor, InterpreterInfo info) {
+        PythonPathHelper pythonPathHelper = new PythonPathHelper();
+        pythonPathHelper.setPythonPath(info.libs);
+
+        ISystemModulesManager modulesManager = info.getModulesManager();
+        IInterpreterManager manager = modulesManager.getInterpreterManager();
+        AbstractAdditionalDependencyInfo additionalInfo;
+        try {
+            additionalInfo = AdditionalSystemInterpreterInfo.getAdditionalSystemInfo(
+                    manager,
+                    info.getExecutableOrJar());
+        } catch (MisconfigurationException e) {
+            Log.log(e);
+            return BuilderResult.OK;
         }
 
-        private volatile Set<InterpreterInfoBuilder> buildersToCheck = new HashSet<InterpreterInfoBuilder>();
+        return this.syncInfoToPythonPath(monitor, pythonPathHelper, additionalInfo, modulesManager, info);
+    }
 
-        @Override
-        protected IStatus run(IProgressMonitor monitor) {
-            if (DebugSettings.DEBUG_INTERPRETER_AUTO_UPDATE) {
-                Log.toLogFile(this, "--- Start run");
-            }
+    public BuilderResult syncInfoToPythonPath(IProgressMonitor monitor, PythonPathHelper pythonPathHelper,
+            AbstractAdditionalDependencyInfo additionalInfo, IModulesManager modulesManager, InterpreterInfo info) {
+        if (monitor == null) {
+            monitor = new NullProgressMonitor();
+        }
+        if (DebugSettings.DEBUG_INTERPRETER_AUTO_UPDATE) {
+            Log.toLogFile(this, "--- Start run");
+        }
+        BuilderResult ret = checkEarlyReturn(monitor, info);
+        if (ret != BuilderResult.OK) {
+            return ret;
+        }
 
-            Set<InterpreterInfoBuilder> builders = buildersToCheck;
-            buildersToCheck = new HashSet<InterpreterInfoBuilder>();
+        ModulesFoundStructure modulesFound = pythonPathHelper.getModulesFoundStructure(null, monitor);
+        ret = checkEarlyReturn(monitor, info);
+        if (ret != BuilderResult.OK) {
+            return ret;
+        }
 
-            for (InterpreterInfoBuilder builder : builders) {
-                IStatus ret = checkEarlyReturn(monitor, builder);
-                if (ret != null) {
-                    continue;
-                }
+        PyPublicTreeMap<ModulesKey, ModulesKey> keysFound = ModulesManager.buildKeysFromModulesFound(monitor,
+                modulesFound);
 
-                PythonPathHelper pythonPathHelper = new PythonPathHelper();
-                pythonPathHelper.setPythonPath(builder.info.libs);
-                ModulesFoundStructure modulesFound = pythonPathHelper.getModulesFoundStructure(monitor);
-                ret = checkEarlyReturn(monitor, builder);
-                if (ret != null) {
-                    continue;
-                }
+        if (DebugSettings.DEBUG_INTERPRETER_AUTO_UPDATE) {
+            Log.toLogFile(
+                    this,
+                    StringUtils.format("Found: %s modules",
+                            keysFound.size()));
+        }
+        ret = checkEarlyReturn(monitor, info);
+        if (ret != BuilderResult.OK) {
+            return ret;
+        }
 
-                SystemModulesManager modulesManager = (SystemModulesManager) builder.info.getModulesManager();
-                PyPublicTreeMap<ModulesKey, ModulesKey> keysFound = modulesManager.buildKeysFromModulesFound(monitor,
-                        modulesFound);
-
-                if (DebugSettings.DEBUG_INTERPRETER_AUTO_UPDATE) {
-                    Log.toLogFile(this, org.python.pydev.shared_core.string.StringUtils.format("Found: %s modules", keysFound.size()));
-                }
-                ret = checkEarlyReturn(monitor, builder);
-                if (ret != null) {
-                    continue;
-                }
-                Tuple<List<ModulesKey>, List<ModulesKey>> diffModules = modulesManager.diffModules(keysFound);
-                if (diffModules.o1.size() > 0 || diffModules.o2.size() > 0) {
-                    if (DebugSettings.DEBUG_INTERPRETER_AUTO_UPDATE) {
-                        Log.toLogFile(this, org.python.pydev.shared_core.string.StringUtils.format("Diff modules. Added: %s Removed: %s", diffModules.o1,
-                                diffModules.o2));
+        try {
+            if (info != null) {
+                String[] builtins = info.getBuiltins();
+                //Note: consider builtins at this point: we do this only at this point and not in the regular process
+                //(which would be the dialog where the interpreter is configured) because this can be a slow process
+                //as we have to get the completions for all builtin modules from the shell.
+                if (builtins != null) {
+                    for (int i = 0; i < builtins.length; i++) {
+                        String name = builtins[i];
+                        final ModulesKey k = new ModulesKey(name, null);
+                        //Note that it'll override source modules!
+                        keysFound.put(k, k);
                     }
+                }
+            }
 
-                    //Update the modules manager itself (just pass all the keys as that should be fast)
-                    modulesManager.updateKeysAndSave(keysFound);
+            // Important: do the diff only after the builtins are added (otherwise the modules manager may become wrong)!
+            Tuple<List<ModulesKey>, List<ModulesKey>> diffModules = modulesManager.diffModules(keysFound);
 
-                    //Now, the additional info can be slower, so, let's work only on the deltas...
-                    IInterpreterManager manager = builder.info.getModulesManager().getInterpreterManager();
-                    try {
-                        AbstractAdditionalDependencyInfo additionalSystemInfo = AdditionalSystemInterpreterInfo
-                                .getAdditionalSystemInfo(manager, builder.info.getExecutableOrJar());
-                        additionalSystemInfo.updateKeysIfNeededAndSave(keysFound);
-                    } catch (Exception e) {
-                        Log.log(e);
+            if (diffModules.o1.size() > 0 || diffModules.o2.size() > 0) {
+                if (DebugSettings.DEBUG_INTERPRETER_AUTO_UPDATE) {
+                    Log.toLogFile(this, StringUtils.format(
+                            "Diff modules. Added: %s Removed: %s", diffModules.o1,
+                            diffModules.o2));
+                }
+
+                //Update the modules manager itself (just pass all the keys as that should be fast)
+                if (modulesManager instanceof SystemModulesManager) {
+                    ((SystemModulesManager) modulesManager).updateKeysAndSave(keysFound);
+                } else {
+                    for (ModulesKey newEntry : diffModules.o1) {
+                        modulesManager.addModule(newEntry);
                     }
+                    modulesManager.removeModules(diffModules.o2);
                 }
             }
+            additionalInfo.updateKeysIfNeededAndSave(keysFound, info, monitor);
+        } catch (Exception e) {
+            Log.log(e);
+        }
 
+        if (DebugSettings.DEBUG_INTERPRETER_AUTO_UPDATE) {
+            Log.toLogFile(this, "--- End Run");
+        }
+        return BuilderResult.OK;
+    }
+
+    private BuilderResult checkEarlyReturn(IProgressMonitor monitor, InterpreterInfo info) {
+        if (monitor.isCanceled()) {
             if (DebugSettings.DEBUG_INTERPRETER_AUTO_UPDATE) {
-                Log.toLogFile(this, "--- End Run");
+                Log.toLogFile(this, "Cancelled");
             }
-            return Status.OK_STATUS;
+            return BuilderResult.ABORTED;
         }
 
-        public IStatus checkEarlyReturn(IProgressMonitor monitor, InterpreterInfoBuilder builder) {
-            if (builder.isDisposed()) {
-                if (DebugSettings.DEBUG_INTERPRETER_AUTO_UPDATE) {
-                    Log.toLogFile(this, "Disposed");
-                }
-                return Status.OK_STATUS;
+        if (info != null && !info.getLoadFinished()) {
+            if (DebugSettings.DEBUG_INTERPRETER_AUTO_UPDATE) {
+                Log.toLogFile(this, "Load not finished (rescheduling)");
             }
-
-            if (monitor.isCanceled()) {
-                if (DebugSettings.DEBUG_INTERPRETER_AUTO_UPDATE) {
-                    Log.toLogFile(this, "Cancelled");
-                }
-                return Status.OK_STATUS;
-            }
-
-            if (!builder.info.getLoadFinished()) {
-                if (DebugSettings.DEBUG_INTERPRETER_AUTO_UPDATE) {
-                    Log.toLogFile(this, "Load not finished (rescheduling)");
-                }
-                buildersToCheck.add(builder);
-                builderJob.schedule(20 * 1000); //Check again in 20 seconds
-                return Status.OK_STATUS;
-            }
-            return null;
+            Log.log("The interpreter sync was cancelled (scheduling for checking the integrity later on again).\n"
+                    + "To prevent any scheduling (at the cost of possible index corruptions),\n"
+                    + "uncheck the setting at Preferences > PyDev > Interpreters.");
+            return BuilderResult.MUST_SYNCH_LATER;
         }
-
-    }
-
-    private InterpreterInfo info;
-
-    private boolean disposed;
-
-    private static final InterpreterBuilderJob builderJob = new InterpreterBuilderJob();
-
-    boolean isDisposed() {
-        return this.disposed;
-    }
-
-    public void dispose() {
-        disposed = true;
-    }
-
-    public void setInfo(InterpreterInfo info) {
-        setInfo(info, 20 * 1000); //Default: check 20 seconds after starting up...
-    }
-
-    public void setInfo(InterpreterInfo info, int schedule) {
-        this.info = info;
-        builderJob.buildersToCheck.add(this);
-        builderJob.schedule(schedule);
+        return BuilderResult.OK;
     }
 
 }

@@ -15,7 +15,6 @@ import org.eclipse.jface.text.IRegion;
 import org.eclipse.jface.text.ITypedRegion;
 import org.eclipse.jface.text.contentassist.IContentAssistant;
 import org.eclipse.jface.text.source.IVerticalRuler;
-import org.eclipse.jface.text.source.SourceViewer;
 import org.eclipse.jface.util.IPropertyChangeListener;
 import org.eclipse.jface.util.PropertyChangeEvent;
 import org.eclipse.swt.custom.BidiSegmentEvent;
@@ -29,14 +28,17 @@ import org.eclipse.swt.graphics.RGB;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.texteditor.AbstractTextEditor;
+import org.python.pydev.editor.autoedit.DefaultIndentPrefs;
+import org.python.pydev.editor.codefolding.PyAbstractIndentGuidePreferencesProvider;
 import org.python.pydev.plugin.preferences.PydevPrefs;
+import org.python.pydev.shared_ui.editor.BaseSourceViewer;
 
 /**
  * Source viewer for the breakpoints editor
- * 
+ *
  * @author Fabio
  */
-public class PythonSourceViewer extends SourceViewer implements IPropertyChangeListener {
+public class PythonSourceViewer extends BaseSourceViewer {
 
     private Font fFont;
 
@@ -44,8 +46,39 @@ public class PythonSourceViewer extends SourceViewer implements IPropertyChangeL
 
     private Color fForegroundColor;
 
+    private IPropertyChangeListener propertyChangeListener = new IPropertyChangeListener() {
+
+        /**
+         * @see IPropertyChangeListener#propertyChange(PropertyChangeEvent)
+         */
+        @Override
+        public void propertyChange(PropertyChangeEvent event) {
+            String property = event.getProperty();
+
+            if (JFaceResources.TEXT_FONT.equals(property)) {
+                updateViewerFont();
+            }
+            if (AbstractTextEditor.PREFERENCE_COLOR_FOREGROUND.equals(property)
+                    || AbstractTextEditor.PREFERENCE_COLOR_FOREGROUND_SYSTEM_DEFAULT.equals(property)
+                    || AbstractTextEditor.PREFERENCE_COLOR_BACKGROUND.equals(property)
+                    || AbstractTextEditor.PREFERENCE_COLOR_BACKGROUND_SYSTEM_DEFAULT.equals(property)) {
+                updateViewerColors();
+            }
+            if (affectsTextPresentation(event)) {
+                invalidateTextPresentation();
+            }
+        }
+
+    };
+
     public PythonSourceViewer(Composite parent, IVerticalRuler ruler, int styles) {
-        super(parent, ruler, styles);
+        super(parent, ruler, null, false, styles, new PyAbstractIndentGuidePreferencesProvider() {
+
+            @Override
+            public int getTabWidth() {
+                return DefaultIndentPrefs.get(null).getTabWidth();
+            }
+        });
         StyledText text = this.getTextWidget();
         text.addBidiSegmentListener(new BidiSegmentListener() {
             public void lineGetSegments(BidiSegmentEvent event) {
@@ -58,7 +91,7 @@ public class PythonSourceViewer extends SourceViewer implements IPropertyChangeL
         });
         updateViewerFont();
         updateViewerColors();
-        getPreferenceStore().addPropertyChangeListener(this);
+        getPreferenceStore().addPropertyChangeListener(propertyChangeListener);
     }
 
     /**
@@ -89,7 +122,7 @@ public class PythonSourceViewer extends SourceViewer implements IPropertyChangeL
 
     /**
      * Sets the current font.
-     * 
+     *
      * @param font the new font
      */
     private void setFont(Font font) {
@@ -98,7 +131,7 @@ public class PythonSourceViewer extends SourceViewer implements IPropertyChangeL
 
     /**
      * Returns the current font.
-     * 
+     *
      * @return the current font
      */
     private Font getFont() {
@@ -107,7 +140,7 @@ public class PythonSourceViewer extends SourceViewer implements IPropertyChangeL
 
     /**
      * Sets the font for the given viewer sustaining selection and scroll position.
-     * 
+     *
      * @param font the font
      */
     private void applyFont(Font font) {
@@ -136,6 +169,9 @@ public class PythonSourceViewer extends SourceViewer implements IPropertyChangeL
         IPreferenceStore store = getPreferenceStore();
         if (store != null) {
             StyledText styledText = getTextWidget();
+            if (styledText == null || styledText.isDisposed()) {
+                return;
+            }
             Color color = store.getBoolean(AbstractTextEditor.PREFERENCE_COLOR_FOREGROUND_SYSTEM_DEFAULT) ? null
                     : createColor(store, AbstractTextEditor.PREFERENCE_COLOR_FOREGROUND, styledText.getDisplay());
             styledText.setForeground(color);
@@ -174,7 +210,7 @@ public class PythonSourceViewer extends SourceViewer implements IPropertyChangeL
 
     /**
      * Returns the current background color.
-     * 
+     *
      * @return the current background color
      */
     protected Color getBackgroundColor() {
@@ -183,7 +219,7 @@ public class PythonSourceViewer extends SourceViewer implements IPropertyChangeL
 
     /**
      * Sets the current background color.
-     * 
+     *
      * @param backgroundColor the new background color
      */
     protected void setBackgroundColor(Color backgroundColor) {
@@ -192,7 +228,7 @@ public class PythonSourceViewer extends SourceViewer implements IPropertyChangeL
 
     /**
      * Returns the current foreground color.
-     * 
+     *
      * @return the current foreground color
      */
     protected Color getForegroundColor() {
@@ -201,7 +237,7 @@ public class PythonSourceViewer extends SourceViewer implements IPropertyChangeL
 
     /**
      * Sets the current foreground color.
-     * 
+     *
      * @param foregroundColor the new foreground color
      */
     protected void setForegroundColor(Color foregroundColor) {
@@ -210,31 +246,11 @@ public class PythonSourceViewer extends SourceViewer implements IPropertyChangeL
 
     /**
      * Returns the preference store used to configure this source viewer. The JDISourceViewer uses the Java UI preferences.
-     * 
+     *
      * @return the Java UI preferences
      */
     protected IPreferenceStore getPreferenceStore() {
         return PydevPrefs.getChainedPrefStore();
-    }
-
-    /**
-     * @see IPropertyChangeListener#propertyChange(PropertyChangeEvent)
-     */
-    public void propertyChange(PropertyChangeEvent event) {
-        String property = event.getProperty();
-
-        if (JFaceResources.TEXT_FONT.equals(property)) {
-            updateViewerFont();
-        }
-        if (AbstractTextEditor.PREFERENCE_COLOR_FOREGROUND.equals(property)
-                || AbstractTextEditor.PREFERENCE_COLOR_FOREGROUND_SYSTEM_DEFAULT.equals(property)
-                || AbstractTextEditor.PREFERENCE_COLOR_BACKGROUND.equals(property)
-                || AbstractTextEditor.PREFERENCE_COLOR_BACKGROUND_SYSTEM_DEFAULT.equals(property)) {
-            updateViewerColors();
-        }
-        if (affectsTextPresentation(event)) {
-            invalidateTextPresentation();
-        }
     }
 
     /**
@@ -246,7 +262,7 @@ public class PythonSourceViewer extends SourceViewer implements IPropertyChangeL
 
     /**
      * Returns the current content assistant.
-     * 
+     *
      * @return the current content assistant
      */
     public IContentAssistant getContentAssistant() {
@@ -255,7 +271,7 @@ public class PythonSourceViewer extends SourceViewer implements IPropertyChangeL
 
     /**
      * Returns a segmentation of the line of the given document appropriate for bidi rendering. The default implementation returns only the string literals of a Java code line as segments.
-     * 
+     *
      * @param document the document
      * @param lineOffset the offset of the line
      * @return the line's bidi segmentation
@@ -272,8 +288,8 @@ public class PythonSourceViewer extends SourceViewer implements IPropertyChangeL
         /*
          * List segmentation= new ArrayList(); for (int i= 0; i < linePartitioning.length; i++) { // if (IJavaPartitions.JAVA_STRING.equals(linePartitioning[i].getType())) //
          * segmentation.add(linePartitioning[i]); }
-         * 
-         * 
+         *
+         *
          * if (segmentation.size() == 0) return null;
          */
         int size = linePartitioning.length;
@@ -284,15 +300,18 @@ public class PythonSourceViewer extends SourceViewer implements IPropertyChangeL
             // ITypedRegion segment= (ITypedRegion) segmentation.get(i);
             ITypedRegion segment = linePartitioning[i];
 
-            if (i == 0)
+            if (i == 0) {
                 segments[j++] = 0;
+            }
 
             int offset = segment.getOffset() - lineOffset;
-            if (offset > segments[j - 1])
+            if (offset > segments[j - 1]) {
                 segments[j++] = offset;
+            }
 
-            if (offset + segment.getLength() >= line.getLength())
+            if (offset + segment.getLength() >= line.getLength()) {
                 break;
+            }
 
             segments[j++] = offset + segment.getLength();
         }
@@ -322,7 +341,7 @@ public class PythonSourceViewer extends SourceViewer implements IPropertyChangeL
             getForegroundColor().dispose();
             setForegroundColor(null);
         }
-        getPreferenceStore().removePropertyChangeListener(this);
+        getPreferenceStore().removePropertyChangeListener(propertyChangeListener);
     }
 
 }

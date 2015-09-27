@@ -11,11 +11,14 @@ package org.python.pydev.jythontests;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileFilter;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import junit.framework.TestCase;
 
@@ -26,6 +29,7 @@ import org.python.pydev.jython.IPythonInterpreter;
 import org.python.pydev.jython.JythonPlugin;
 import org.python.pydev.runners.SimpleJythonRunner;
 import org.python.pydev.runners.SimpleRunner;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_core.structure.Tuple;
 
 public class JythonTest extends TestCase {
@@ -60,12 +64,14 @@ public class JythonTest extends TestCase {
 
     }
 
+    @Override
     protected void setUp() throws Exception {
         super.setUp();
         JythonPlugin.setDebugReload(false);
         JythonPlugin.IN_TESTS = true;
     }
 
+    @Override
     protected void tearDown() throws Exception {
         super.tearDown();
         JythonPlugin.setDebugReload(true);
@@ -73,7 +79,7 @@ public class JythonTest extends TestCase {
 
     public void testJythonTests() throws Exception {
         if (RUN_TESTS_ON_SAME_PROCESS) {
-            //unittest.TestCase format: the __main__ is required in the global namespace 
+            //unittest.TestCase format: the __main__ is required in the global namespace
             HashMap<String, Object> locals = new HashMap<String, Object>();
             locals.put("__name__", "__main__");
             IPythonInterpreter interpreter = JythonPlugin.newPythonInterpreter(false, false);
@@ -93,9 +99,22 @@ public class JythonTest extends TestCase {
 
     public void testJythonTestsOnSeparateProcess() throws Exception {
         if (RUN_TESTS_ON_SEPARATE_PROCESS) {
+            final Set<String> skip = new HashSet<>();
+            skip.add("test_pydev_ipython_010.py");
+            skip.add("test_pydev_ipython_011.py");
+            FileFilter filter = new FileFilter() {
+
+                @Override
+                public boolean accept(File pathname) {
+                    if (skip.contains(pathname.getName())) {
+                        return false;
+                    }
+                    return true;
+                }
+            };
             //has to be run on a separate process because it'll call exit()
             List<Throwable> errors = JythonTest.execAll("test", new File[] { new File(
-                    TestDependent.TEST_PYDEV_PLUGIN_LOC + "pysrc/tests"), });
+                    TestDependent.TEST_PYDEV_PLUGIN_LOC + "pysrc/tests"), }, filter);
             if (errors.size() > 0) {
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
                 out.write("There have been errors while executing the test scripts in jython.\n\n".getBytes());
@@ -127,6 +146,16 @@ public class JythonTest extends TestCase {
     }
 
     public static List<Throwable> execAll(final String startingWith, File[] beneathFolders) {
+        return execAll(startingWith, beneathFolders, new FileFilter() {
+
+            @Override
+            public boolean accept(File pathname) {
+                return true;
+            }
+        });
+    }
+
+    public static List<Throwable> execAll(final String startingWith, File[] beneathFolders, FileFilter filter) {
         List<Throwable> errors = new ArrayList<Throwable>();
         for (File file : beneathFolders) {
             if (file != null) {
@@ -138,9 +167,12 @@ public class JythonTest extends TestCase {
                 }
                 File[] files = JythonPlugin.getFilesBeneathFolder(startingWith, file);
                 for (File f : files) {
-                    Throwable throwable = exec(f);
-                    if (throwable != null) {
-                        errors.add(throwable);
+                    if (filter.accept(f)) {
+
+                        Throwable throwable = exec(f);
+                        if (throwable != null) {
+                            errors.add(throwable);
+                        }
                     }
                 }
             }
@@ -149,7 +181,7 @@ public class JythonTest extends TestCase {
     }
 
     private static Throwable exec(File f) {
-        System.out.println(org.python.pydev.shared_core.string.StringUtils.format("Running: %s", f));
+        System.out.println(StringUtils.format("Running: %s", f));
 
         String sep = SimpleRunner.getPythonPathSeparator();
         assertTrue(new File(TestDependent.JYTHON_ANT_JAR_LOCATION).exists());
@@ -161,7 +193,7 @@ public class JythonTest extends TestCase {
                 TestDependent.JAVA_LOCATION), f.toString(), TestDependent.JYTHON_JAR_LOCATION, null, f.getParentFile(),
                 null, null, pythonpath, "utf-8");
 
-        System.out.println(org.python.pydev.shared_core.string.StringUtils.format("stdout:%s\nstderr:%s", output.o1,
+        System.out.println(StringUtils.format("stdout:%s\nstderr:%s", output.o1,
                 output.o2));
 
         if (output.o2.toLowerCase().indexOf("failed") != -1 || output.o2.toLowerCase().indexOf("traceback") != -1) {

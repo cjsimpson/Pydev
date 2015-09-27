@@ -39,18 +39,15 @@ public class PythonShell extends AbstractShell {
     }
 
     @Override
-    protected synchronized ProcessCreationInfo createServerProcess(IInterpreterInfo interpreter, int pWrite, int pRead)
+    protected synchronized ProcessCreationInfo createServerProcess(IInterpreterInfo interpreter, int port)
             throws IOException {
         File file = new File(interpreter.getExecutableOrJar());
-        if (file.exists() == false) {
-            throw new RuntimeException("The interpreter location found does not exist. " + interpreter);
-        }
         if (file.isDirectory() == true) {
             throw new RuntimeException("The interpreter location found is a directory. " + interpreter);
         }
 
         String[] parameters = SimplePythonRunner.preparePythonCallParameters(interpreter.getExecutableOrJar(),
-                FileUtils.getFileAbsolutePath(serverFile), new String[] { "" + pWrite, "" + pRead });
+                FileUtils.getFileAbsolutePath(serverFile), new String[] { "" + port });
 
         IInterpreterManager manager = PydevPlugin.getPythonInterpreterManager();
 
@@ -62,9 +59,9 @@ public class PythonShell extends AbstractShell {
         }
 
         File workingDir = serverFile.getParentFile();
-        process = SimpleRunner.createProcess(parameters, envp, workingDir);
 
-        return new ProcessCreationInfo(parameters, envp, workingDir, process);
+        return new ProcessCreationInfo(parameters, envp, workingDir, SimpleRunner.createProcess(parameters, envp,
+                workingDir));
     }
 
 }

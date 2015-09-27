@@ -13,7 +13,6 @@ package org.python.pydev.editor.codecompletion.revisited;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 
 import junit.framework.TestCase;
@@ -21,11 +20,12 @@ import junit.framework.TestCase;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.jface.text.IDocument;
-import org.python.pydev.core.resource_stubs.FileMock;
-import org.python.pydev.core.resource_stubs.FolderMock;
-import org.python.pydev.core.resource_stubs.ProjectMock;
+import org.python.pydev.builder.VisitorMemo;
 import org.python.pydev.parser.PythonNatureStub;
 import org.python.pydev.shared_core.callbacks.ICallback0;
+import org.python.pydev.shared_core.resource_stubs.FileMock;
+import org.python.pydev.shared_core.resource_stubs.FolderMock;
+import org.python.pydev.shared_core.resource_stubs.ProjectMock;
 
 public class PyCodeCompletionVisitorTest extends TestCase {
 
@@ -76,7 +76,7 @@ public class PyCodeCompletionVisitorTest extends TestCase {
 
         project.addMember(mod1);
 
-        visitor.memo = new HashMap<String, Object>();
+        visitor.memo = new VisitorMemo();
         visitor.visitAddedResource(initFromMod1, null, null);
 
         //See comments above for visited.

@@ -21,11 +21,11 @@ import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.text.contentassist.ICompletionProposal;
-import org.python.pydev.core.docutils.StringUtils;
 import org.python.pydev.core.log.Log;
 import org.python.pydev.debug.model.PyStackFrame;
 import org.python.pydev.debug.model.XMLUtils;
 import org.python.pydev.shared_core.callbacks.ICallback;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_core.structure.Tuple;
 import org.python.pydev.shared_interactive_console.console.IScriptConsoleCommunication;
 import org.python.pydev.shared_interactive_console.console.InterpreterResponse;
@@ -33,7 +33,7 @@ import org.python.pydev.shared_interactive_console.console.InterpreterResponse;
 /**
  * This class allows console to communicate with python backend by using the existing
  * debug connection.
- * 
+ *
  * @author hussain.bohra
  * @author Fabio Zadrozny
  */
@@ -63,14 +63,41 @@ public class PydevDebugConsoleCommunication implements IScriptConsoleCommunicati
      */
     private volatile InterpreterResponse nextResponse;
 
-    private final PydevDebugConsoleFrame consoleFrame;
+    private final IPyStackFrameProvider consoleFrameProvider;
 
-    public PydevDebugConsoleCommunication() {
-        consoleFrame = new PydevDebugConsoleFrame();
+    private ICallback<Object, Tuple<String, String>> onContentsReceived;
+
+    private boolean bufferedOutput;
+
+    public void setBufferedOutput(boolean bufferedOutput) {
+        this.bufferedOutput = bufferedOutput;
     }
 
-    public void execInterpreter(final String command, final ICallback<Object, InterpreterResponse> onResponseReceived,
-            final ICallback<Object, Tuple<String, String>> onContentsReceived) {
+    public boolean getBufferedOutput() {
+        return this.bufferedOutput;
+    }
+
+    public PydevDebugConsoleCommunication(boolean bufferedOutput, IPyStackFrameProvider consoleFrameProvider) {
+        this.consoleFrameProvider = consoleFrameProvider;
+        this.bufferedOutput = bufferedOutput;
+    }
+
+    @Override
+    public boolean isConnected() {
+        return this.consoleFrameProvider.getLastSelectedFrame() != null;
+    }
+
+    @Override
+    public void setOnContentsReceivedCallback(ICallback<Object, Tuple<String, String>> onContentsReceived) {
+        this.onContentsReceived = onContentsReceived;
+    }
+
+    @Override
+    public void interrupt() {
+        //can't interrupt in the debug console for now...
+    }
+
+    public void execInterpreter(final String command, final ICallback<Object, InterpreterResponse> onResponseReceived) {
 
         nextResponse = null;
         if (waitingForInput) {
@@ -83,31 +110,44 @@ public class PydevDebugConsoleCommunication implements IScriptConsoleCommunicati
 
                 @Override
                 protected IStatus run(IProgressMonitor monitor) {
-                    PyStackFrame frame = consoleFrame.getLastSelectedFrame();
+                    PyStackFrame frame = consoleFrameProvider.getLastSelectedFrame();
                     if (frame == null) {
-                        nextResponse = new InterpreterResponse(EMPTY,
-                                "[Invalid Frame]: Please select frame to connect the console." + "\n", false, false);
+                        if (onContentsReceived != null) {
+                            onContentsReceived.call(new Tuple<String, String>(EMPTY,
+                                    "[Invalid Frame]: Please select frame to connect the console.\n"));
+                        }
+                        nextResponse = new InterpreterResponse(false, false);
                         return Status.CANCEL_STATUS;
                     }
                     final EvaluateDebugConsoleExpression evaluateDebugConsoleExpression = new EvaluateDebugConsoleExpression(
                             frame);
-                    evaluateDebugConsoleExpression.executeCommand(command);
+                    evaluateDebugConsoleExpression.executeCommand(command, bufferedOutput);
                     String result = evaluateDebugConsoleExpression.waitForCommand();
                     try {
                         if (result.length() == 0) {
                             //timed out
-                            nextResponse = new InterpreterResponse(result, EMPTY, false, false);
+                            if (onContentsReceived != null) {
+                                onContentsReceived.call(new Tuple<String, String>(result, EMPTY));
+                            }
+                            nextResponse = new InterpreterResponse(false, false);
                             return Status.CANCEL_STATUS;
 
                         } else {
                             EvaluateDebugConsoleExpression.PydevDebugConsoleMessage consoleMessage = XMLUtils
                                     .getConsoleMessage(result);
-                            nextResponse = new InterpreterResponse(consoleMessage.getOutputMessage().toString(),
-                                    consoleMessage.getErrorMessage().toString(), consoleMessage.isMore(), false);
+                            if (onContentsReceived != null) {
+                                onContentsReceived.call(new Tuple<String, String>(
+                                        consoleMessage.getOutputMessage().toString(),
+                                        consoleMessage.getErrorMessage().toString()));
+                            }
+                            nextResponse = new InterpreterResponse(consoleMessage.isMore(), false);
                         }
                     } catch (CoreException e) {
                         Log.log(e);
-                        nextResponse = new InterpreterResponse(result, EMPTY, false, false);
+                        if (onContentsReceived != null) {
+                            onContentsReceived.call(new Tuple<String, String>(result, EMPTY));
+                        }
+                        nextResponse = new InterpreterResponse(false, false);
                         return Status.CANCEL_STATUS;
                     }
 
@@ -135,13 +175,14 @@ public class PydevDebugConsoleCommunication implements IScriptConsoleCommunicati
         onResponseReceived.call(nextResponse);
     }
 
-    public ICompletionProposal[] getCompletions(String text, String actTok, int offset) throws Exception {
+    public ICompletionProposal[] getCompletions(String text, String actTok, int offset, boolean showForTabCompletion)
+            throws Exception {
         ICompletionProposal[] receivedCompletions = {};
         if (waitingForInput) {
             return new ICompletionProposal[0];
         }
 
-        PyStackFrame frame = consoleFrame.getLastSelectedFrame();
+        PyStackFrame frame = consoleFrameProvider.getLastSelectedFrame();
         if (frame == null) {
             return new ICompletionProposal[0];
         }
@@ -151,7 +192,7 @@ public class PydevDebugConsoleCommunication implements IScriptConsoleCommunicati
         if (result.length() > 0) {
             List<Object[]> fromServer = XMLUtils.convertXMLcompletionsFromConsole(result);
             List<ICompletionProposal> ret = new ArrayList<ICompletionProposal>();
-            PydevConsoleCommunication.convertToICompletions(text, actTok, offset, fromServer, ret);
+            PydevConsoleCommunication.convertConsoleCompletionsToICompletions(text, actTok, offset, fromServer, ret, false);
             receivedCompletions = ret.toArray(new ICompletionProposal[ret.size()]);
         }
         return receivedCompletions;
@@ -165,7 +206,7 @@ public class PydevDebugConsoleCommunication implements IScriptConsoleCommunicati
      * Enable/Disable linking of the debug console with the suspended frame.
      */
     public void linkWithDebugSelection(boolean isLinkedWithDebug) {
-        consoleFrame.linkWithDebugSelection(isLinkedWithDebug);
+        consoleFrameProvider.linkWithDebugSelection(isLinkedWithDebug);
     }
 
     public void close() throws Exception {

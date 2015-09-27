@@ -14,17 +14,17 @@ package org.python.pydev.debug.newconsole;
 
 import org.eclipse.core.runtime.Assert;
 import org.eclipse.core.runtime.CoreException;
-import org.python.pydev.core.docutils.StringUtils;
 import org.python.pydev.core.log.Log;
 import org.python.pydev.debug.model.AbstractDebugTarget;
 import org.python.pydev.debug.model.PyStackFrame;
 import org.python.pydev.debug.model.remote.AbstractDebuggerCommand;
 import org.python.pydev.debug.model.remote.EvaluateConsoleExpressionCommand;
 import org.python.pydev.debug.model.remote.ICommandResponseListener;
+import org.python.pydev.shared_core.string.StringUtils;
 
 /**
  * Class to exectute console command in the debugging context
- * 
+ *
  * @author hussain.bohra
  * @author Fabio Zadrozny
  */
@@ -40,8 +40,8 @@ public class EvaluateDebugConsoleExpression implements ICommandResponseListener 
     }
 
     /**
-     * This method will get called from AbstractDebugTarget when 
-     * output arrives for the posted command 
+     * This method will get called from AbstractDebugTarget when
+     * output arrives for the posted command
      */
     public void commandComplete(AbstractDebuggerCommand cmd) {
         try {
@@ -53,13 +53,14 @@ public class EvaluateDebugConsoleExpression implements ICommandResponseListener 
 
     /**
      * Execute the line in selected frame context
-     * 
+     *
      * @param consoleId
      * @param command
      */
-    public void executeCommand(String command) {
+    public void executeCommand(String command, boolean bufferedOutput) {
         AbstractDebugTarget target = frame.getTarget();
-        String locator = getLocator(frame.getThreadId(), frame.getId(), "EVALUATE", command);
+        String locator = getLocator(frame.getThreadId(), frame.getId(), bufferedOutput ? "EVALUATE"
+                : "EVALUATE_UNBUFFERED", command);
         AbstractDebuggerCommand cmd = new EvaluateConsoleExpressionCommand(target, locator,
                 new ICommandResponseListener() {
 
@@ -73,7 +74,7 @@ public class EvaluateDebugConsoleExpression implements ICommandResponseListener 
 
     /**
      * Post the completions command
-     * 
+     *
      * @param consoleId
      * @param actTok
      * @param offset
@@ -110,18 +111,18 @@ public class EvaluateDebugConsoleExpression implements ICommandResponseListener 
     }
 
     /**
-     * join and return all locators with '\t' 
-     * 
+     * join and return all locators with '\t'
+     *
      * @param locators
      * @return
      */
     private String getLocator(String... locators) {
-        return org.python.pydev.shared_core.string.StringUtils.join("\t", locators);
+        return StringUtils.join("\t", locators);
     }
 
     /**
-     * This class represent the console message to be displayed in the debug console. 
-     * 
+     * This class represent the console message to be displayed in the debug console.
+     *
      * @author hussain.bohra
      *
      */

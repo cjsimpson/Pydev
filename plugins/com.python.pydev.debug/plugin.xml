@@ -50,6 +50,16 @@
            toolbarPath="pyDebugGroup"
            id="com.python.pydev.debug.actions.EndDebugServer">
      </action>
+     <action
+           label="Attach to Process"
+           icon="icons/attach_to_process.png"
+           class="com.python.pydev.debug.actions.AttachToProcess"
+           tooltip="Pydev: Attach debugger to running Python process"
+           menubarPath="pyGeneralMenu/pyDebugGroup"
+           toolbarPath="pyDebugGroup"
+           id="com.python.pydev.debug.actions.AttachToProcess"
+           >
+     </action>
   </actionSet>
 </extension>
 
@@ -69,6 +79,12 @@
 
 <extension point="org.eclipse.core.runtime.preferences">
       <initializer class="com.python.pydev.debug.DebugPluginPrefsInitializer"/>
+</extension>
+<extension
+      point="org.eclipse.ui.startup">
+   <startup
+         class="com.python.pydev.debug.DebugEarlyStartup">
+   </startup>
 </extension>
 
 </plugin>

@@ -18,7 +18,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
 
+import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.Assert;
+import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.jface.text.IDocument;
 import org.python.pydev.core.DeltaSaver;
 import org.python.pydev.core.FileUtilsFileBuffer;
@@ -43,8 +45,10 @@ import org.python.pydev.parser.jython.SimpleNode;
 import org.python.pydev.plugin.PydevPlugin;
 import org.python.pydev.plugin.nature.SystemPythonNature;
 import org.python.pydev.shared_core.cache.LRUCache;
-import org.python.pydev.shared_core.model.ISimpleNode;
+import org.python.pydev.shared_core.io.FileUtils;
+import org.python.pydev.shared_core.parsing.BaseParser.ParseOutput;
 import org.python.pydev.shared_core.string.FastStringBuffer;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_core.structure.Tuple;
 import org.python.pydev.ui.pythonpathconf.InterpreterInfo;
 
@@ -52,6 +56,8 @@ import org.python.pydev.ui.pythonpathconf.InterpreterInfo;
  * @author Fabio Zadrozny
  */
 public final class SystemModulesManager extends ModulesManagerWithBuild implements ISystemModulesManager {
+
+    private static final String DIR_NAME_FOR_COMPILED_CACHE = "shell";
 
     /**
      * The system modules manager may have a nature if we create a SystemASTManager
@@ -72,11 +78,15 @@ public final class SystemModulesManager extends ModulesManagerWithBuild implemen
         this.info = info;
     }
 
+    public InterpreterInfo getInfo() {
+        return info;
+    }
+
     public void endProcessing() {
         save();
     }
 
-    /** 
+    /**
      * @see org.python.pydev.core.ISystemModulesManager#getBuiltins()
      */
     public String[] getBuiltins() {
@@ -153,6 +163,7 @@ public final class SystemModulesManager extends ModulesManagerWithBuild implemen
                 keys.put(k, k);
             }
         }
+        super.onChangePythonpath(keys);
     }
 
     /**
@@ -196,7 +207,7 @@ public final class SystemModulesManager extends ModulesManagerWithBuild implemen
         ModulesKey keyForCacheAccess = new ModulesKey(null, null);
 
         //A different choice for users that want more complete information on the libraries they're dealing
-        //with is using predefined modules. Those will 
+        //with is using predefined modules. Those will
         File predefinedModule = this.info.getPredefinedModule(name);
         if (predefinedModule != null && predefinedModule.exists()) {
             keyForCacheAccess.name = name;
@@ -207,7 +218,7 @@ public final class SystemModulesManager extends ModulesManagerWithBuild implemen
                 if (predefinedSourceModule.isSynched()) {
                     return n;
                 }
-                //otherwise (not PredefinedSourceModule or not synched), just keep going to create 
+                //otherwise (not PredefinedSourceModule or not synched), just keep going to create
                 //it as a predefined source module
             }
 
@@ -218,7 +229,7 @@ public final class SystemModulesManager extends ModulesManagerWithBuild implemen
             } else {
                 Long lastTimeChanged = predefinedFilesNotParsedToTimestamp.get(predefinedModule);
                 if (lastTimeChanged != null) {
-                    lastModified = predefinedModule.lastModified();
+                    lastModified = FileUtils.lastModified(predefinedModule);
                     if (lastTimeChanged.equals(lastModified)) {
                         tryToParse = false;
                     } else {
@@ -237,17 +248,17 @@ public final class SystemModulesManager extends ModulesManagerWithBuild implemen
                             return IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_0; // Always Python 3.0 here
                         }
                     };
-                    Tuple<ISimpleNode, Throwable> obj = PyParser.reparseDocument(new PyParser.ParserInfo(doc, provider,
+                    ParseOutput obj = PyParser.reparseDocument(new PyParser.ParserInfo(doc, provider,
                             name, predefinedModule));
-                    if (obj.o2 != null) {
+                    if (obj.error != null) {
                         if (lastModified == null) {
-                            lastModified = predefinedModule.lastModified();
+                            lastModified = FileUtils.lastModified(predefinedModule);
                         }
                         predefinedFilesNotParsedToTimestamp.put(predefinedModule, lastModified);
-                        Log.log("Unable to parse: " + predefinedModule, obj.o2);
+                        Log.log("Unable to parse: " + predefinedModule, obj.error);
 
-                    } else if (obj.o1 != null) {
-                        n = new PredefinedSourceModule(name, predefinedModule, (SimpleNode) obj.o1, obj.o2);
+                    } else if (obj.ast != null) {
+                        n = new PredefinedSourceModule(name, predefinedModule, (SimpleNode) obj.ast, obj.error);
                         doAddSingleModule(keyForCacheAccess, n);
                         return n;
                     }
@@ -359,30 +370,24 @@ public final class SystemModulesManager extends ModulesManagerWithBuild implemen
         final File workspaceMetadataFile = getIoDirectory();
         ModulesManager.loadFromFile(this, workspaceMetadataFile);
 
-        try {
-            this.deltaSaver = new DeltaSaver<ModulesKey>(this.getIoDirectory(), "v1_sys_astdelta", readFromFileMethod,
-                    toFileMethod);
-        } catch (Exception e) {
-            Log.log(e);
-        }
-        deltaSaver.processDeltas(this); //process the current deltas (clears current deltas automatically and saves it when the processing is concluded)
+        DeltaSaver<ModulesKey> d = this.deltaSaver = new DeltaSaver<ModulesKey>(this.getIoDirectory(),
+                "v1_sys_astdelta", readFromFileMethod,
+                toFileMethod);
+        d.processDeltas(this); //process the current deltas (clears current deltas automatically and saves it when the processing is concluded)
     }
 
     public void save() {
         final File workspaceMetadataFile = getIoDirectory();
-        if (deltaSaver != null) {
-            deltaSaver.clearAll(); //When save is called, the deltas don't need to be used anymore.
+        DeltaSaver<ModulesKey> d = deltaSaver;
+        if (d != null) {
+            d.clearAll(); //When save is called, the deltas don't need to be used anymore.
         }
         this.saveToFile(workspaceMetadataFile);
-
-        this.deltaSaver = new DeltaSaver<ModulesKey>(this.getIoDirectory(), "v1_sys_astdelta", readFromFileMethod,
-                toFileMethod);
 
     }
 
     public File getIoDirectory() {
-        final File workspaceMetadataFile = PydevPlugin.getWorkspaceMetadataFile(info.getExeAsFileSystemValidPath());
-        return workspaceMetadataFile;
+        return info.getIoDirectory();
     }
 
     /**
@@ -394,6 +399,67 @@ public final class SystemModulesManager extends ModulesManagerWithBuild implemen
             modulesKeys.putAll(keysFound);
         }
         this.save();
+    }
+
+    @Override
+    public void changePythonPath(String pythonpath, IProject project, IProgressMonitor monitor) {
+        try {
+            //Clear the cached files related to compiled modules.
+            File ioDirectory = getIoDirectory();
+            if (ioDirectory != null) {
+                File d = new File(ioDirectory, DIR_NAME_FOR_COMPILED_CACHE);
+                if (d.exists()) {
+                    File[] files = d.listFiles();
+                    if (files != null) {
+
+                        for (int i = 0; i < files.length; ++i) {
+                            File f = files[i];
+
+                            if (f.isFile()) {
+                                try {
+                                    FileUtils.deleteFile(f);
+                                } catch (IOException e) {
+                                    Log.log(e);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.log(e);
+        }
+        super.changePythonPath(pythonpath, project, monitor);
+    }
+
+    /**
+     * Gets the directory where compiled modules should be saved.
+     */
+    public File getCompiledModuleCacheFile(String name) {
+        File ioDirectory = getIoDirectory();
+        if (ioDirectory != null) {
+            File d = new File(ioDirectory, DIR_NAME_FOR_COMPILED_CACHE);
+            if (!d.exists()) {
+                d.mkdirs();
+            }
+            int len = name.length();
+            String pre = "";
+            if (len >= 3) {
+                pre = name.substring(0, 3);
+
+            } else if (len >= 2) {
+                pre = name.substring(0, 2);
+
+            } else if (len >= 1) {
+                pre = name.substring(0, 1);
+
+            }
+
+            //Already separate dotted from non dotted (i.e.: top level) modules.
+            String post = name.contains(".") ? ".top" : ".inn";
+            return new File(d, StringUtils.join("", pre, "_", StringUtils.md5(name), post));
+        }
+        return null;
     }
 
 }

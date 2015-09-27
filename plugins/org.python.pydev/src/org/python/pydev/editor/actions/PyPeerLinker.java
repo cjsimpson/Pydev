@@ -6,6 +6,7 @@
  */
 package org.python.pydev.editor.actions;
 
+import org.eclipse.core.runtime.IAdaptable;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.DocumentCommand;
 import org.eclipse.jface.text.IDocument;
@@ -30,8 +31,10 @@ import org.python.pydev.core.log.Log;
 import org.python.pydev.editor.autoedit.DefaultIndentPrefs;
 import org.python.pydev.editor.autoedit.PyAutoIndentStrategy;
 import org.python.pydev.shared_core.string.FastStringBuffer;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_core.structure.Tuple;
 import org.python.pydev.shared_core.utils.DocCmd;
+import org.python.pydev.shared_ui.editor.ITextViewerExtensionAutoEditions;
 
 /**
  * Something similar org.eclipse.jdt.internal.ui.javaeditor.CompilationUnitEditor.BracketInserter (but not too similar). 
@@ -80,12 +83,31 @@ public class PyPeerLinker {
                         //that's OK (only available in eclipse 3.5)
                     }
                     if (!blockSelection) {
+                        if (viewer instanceof ITextViewerExtensionAutoEditions) {
+                            ITextViewerExtensionAutoEditions autoEditions = (ITextViewerExtensionAutoEditions) viewer;
+                            if (!autoEditions.getAutoEditionsEnabled()) {
+                                return;
+                            }
+                        }
+
                         ISelection selection = viewer.getSelection();
                         if (selection instanceof ITextSelection) {
+                            IAdaptable adaptable;
+                            if (viewer instanceof IAdaptable) {
+                                adaptable = (IAdaptable) viewer;
+                            } else {
+                                adaptable = new IAdaptable() {
+
+                                    @Override
+                                    public Object getAdapter(Class adapter) {
+                                        return null;
+                                    }
+                                };
+                            }
 
                             //Don't bother in getting the indent prefs from the editor: the default indent prefs are 
                             //always global for the settings we want.
-                            pyPeerLinker.setIndentPrefs(new DefaultIndentPrefs());
+                            pyPeerLinker.setIndentPrefs(new DefaultIndentPrefs(adaptable));
                             PySelection ps = new PySelection(viewer.getDocument(), (ITextSelection) selection);
 
                             if (pyPeerLinker.perform(ps, event.character, viewer)) {
@@ -215,10 +237,10 @@ public class PyPeerLinker {
             }
 
         } else { //  [ or {
-            char peer = org.python.pydev.shared_core.string.StringUtils.getPeer(c);
+            char peer = StringUtils.getPeer(c);
             if (PyAutoIndentStrategy.shouldClose(ps, c, peer)) {
                 int offset = ps.getAbsoluteCursorOffset();
-                doc.replace(offset, ps.getSelLength(), org.python.pydev.shared_core.string.StringUtils.getWithClosedPeer(c));
+                doc.replace(offset, ps.getSelLength(), StringUtils.getWithClosedPeer(c));
                 linkOffset = offset + 1;
                 linkLen = 0;
                 linkExitPos = linkOffset + linkLen + 1;

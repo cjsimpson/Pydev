@@ -10,7 +10,6 @@
 package com.python.pydev.analysis.builder;
 
 import java.io.File;
-import java.util.HashMap;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.runtime.IAdaptable;
@@ -21,6 +20,7 @@ import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.text.IDocument;
 import org.python.pydev.builder.PyDevBuilderVisitor;
+import org.python.pydev.builder.VisitorMemo;
 import org.python.pydev.core.IMiscConstants;
 import org.python.pydev.core.IModule;
 import org.python.pydev.core.IPythonNature;
@@ -77,7 +77,7 @@ public class AnalysisParserObserver implements IParserObserver, IParserObserver3
                         this.schedule(200);
                     }
                 } else {
-                    analyze(info, root, fileAdapter, force, nature);
+                    analyze(info, root, fileAdapter, force, nature, false);
                 }
             } catch (Throwable e) {
                 Log.log(e);
@@ -108,6 +108,7 @@ public class AnalysisParserObserver implements IParserObserver, IParserObserver3
             }
         }
         boolean force = false;
+        boolean forceAnalyzeInThisThread = false;
         if (info.argsToReparse != null && info.argsToReparse.length > 0) {
             if (info.argsToReparse[0] instanceof Tuple) {
                 Tuple t = (Tuple) info.argsToReparse[0];
@@ -116,11 +117,15 @@ public class AnalysisParserObserver implements IParserObserver, IParserObserver3
                         //if this message is passed, it will decide whether we will force the analysis or not
                         force = (Boolean) t.o2;
                     }
+                    if (t.o1.equals(IMiscConstants.ANALYSIS_PARSER_OBSERVER_FORCE_IN_THIS_THREAD)) {
+                        //if this message is passed, it will decide whether we will force the analysis or not
+                        forceAnalyzeInThisThread = force = (Boolean) t.o2;
+                    }
                 }
             }
         }
 
-        int whenAnalyze = AnalysisPreferences.getAnalysisPreferences().getWhenAnalyze();
+        int whenAnalyze = new AnalysisPreferences(fileAdapter).getWhenAnalyze();
         if (whenAnalyze == IAnalysisPreferences.ANALYZE_ON_SUCCESFUL_PARSE || force) {
 
             //create the module
@@ -136,12 +141,12 @@ public class AnalysisParserObserver implements IParserObserver, IParserObserver3
                 return;
             }
 
-            analyze(info, root, fileAdapter, force, nature);
+            analyze(info, root, fileAdapter, force, nature, forceAnalyzeInThisThread);
         }
     }
 
     private void analyze(ChangedParserInfoForObservers info, SimpleNode root, IFile fileAdapter, boolean force,
-            IPythonNature nature) {
+            IPythonNature nature, boolean forceAnalyzeInThisThread) {
         if (!nature.startRequests()) {
             return;
         }
@@ -166,20 +171,21 @@ public class AnalysisParserObserver implements IParserObserver, IParserObserver3
 
         //visit it
         AnalysisBuilderVisitor visitor = new AnalysisBuilderVisitor();
-        visitor.memo = new HashMap<String, Object>();
+        visitor.memo = new VisitorMemo();
         visitor.memo.put(PyDevBuilderVisitor.IS_FULL_BUILD, false);
-        visitor.memo.put(PyDevBuilderVisitor.DOCUMENT_TIME, info.documentTime);
+        visitor.memo.put(PyDevBuilderVisitor.DOCUMENT_TIME, info.documentMillisTime);
         visitor.visitingWillStart(new NullProgressMonitor(), false, null);
         try {
             visitor.doVisitChangedResource(nature, fileAdapter, info.doc, null, module, new NullProgressMonitor(),
-                    force, AnalysisBuilderRunnable.ANALYSIS_CAUSE_PARSER, info.documentTime);
+                    force, AnalysisBuilderRunnable.ANALYSIS_CAUSE_PARSER, info.documentMillisTime,
+                    forceAnalyzeInThisThread);
         } finally {
             visitor.visitingEnded(new NullProgressMonitor());
         }
 
     }
 
-    public void parserChanged(ISimpleNode root, IAdaptable resource, IDocument doc) {
+    public void parserChanged(ISimpleNode root, IAdaptable resource, IDocument doc, long docModificationStamp) {
         throw new RuntimeException("As it uses IParserObserver2, this interface should not be asked for.");
     }
 

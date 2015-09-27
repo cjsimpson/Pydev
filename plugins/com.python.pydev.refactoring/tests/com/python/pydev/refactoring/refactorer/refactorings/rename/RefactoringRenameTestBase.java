@@ -13,14 +13,22 @@ package com.python.pydev.refactoring.refactorer.refactorings.rename;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
 
+import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.core.runtime.Path;
 import org.eclipse.jface.text.Document;
+import org.eclipse.text.edits.TextEdit;
 import org.python.pydev.core.IInterpreterManager;
 import org.python.pydev.core.IModule;
 import org.python.pydev.core.IProjectModulesManager;
@@ -31,6 +39,7 @@ import org.python.pydev.core.TestDependent;
 import org.python.pydev.core.docutils.PySelection;
 import org.python.pydev.editor.codecompletion.revisited.ASTManager;
 import org.python.pydev.editor.codecompletion.revisited.ProjectStub;
+import org.python.pydev.editor.codecompletion.revisited.modules.ASTEntryWithSourceModule;
 import org.python.pydev.editor.codecompletion.revisited.modules.AbstractModule;
 import org.python.pydev.editor.codecompletion.revisited.modules.SourceModule;
 import org.python.pydev.editor.refactoring.RefactoringRequest;
@@ -39,8 +48,11 @@ import org.python.pydev.parser.jython.ast.ClassDef;
 import org.python.pydev.parser.jython.ast.FunctionDef;
 import org.python.pydev.parser.visitors.scope.ASTEntry;
 import org.python.pydev.plugin.nature.PythonNature;
+import org.python.pydev.shared_core.callbacks.ICallback;
 import org.python.pydev.shared_core.io.FileUtils;
+import org.python.pydev.shared_core.resource_stubs.FileStub;
 import org.python.pydev.shared_core.string.FastStringBuffer;
+import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_core.structure.Tuple;
 import org.python.pydev.ui.pythonpathconf.InterpreterInfo;
 import org.python.pydev.utils.PyFileListing;
@@ -48,15 +60,15 @@ import org.python.pydev.utils.PyFileListing.PyFileInfo;
 
 import com.python.pydev.analysis.additionalinfo.AbstractAdditionalTokensInfo;
 import com.python.pydev.analysis.additionalinfo.AdditionalProjectInterpreterInfo;
-import com.python.pydev.refactoring.refactorer.AstEntryRefactorerRequestConstants;
-import com.python.pydev.refactoring.refactorer.RefactorerFindReferences;
+import com.python.pydev.analysis.scopeanalysis.AstEntryScopeAnalysisConstants;
 import com.python.pydev.refactoring.refactorer.refactorings.renamelocal.RefactoringLocalTestBase;
 import com.python.pydev.refactoring.wizards.IRefactorRenameProcess;
 import com.python.pydev.refactoring.wizards.rename.PyRenameEntryPoint;
+import com.python.pydev.refactoring.wizards.rename.TextEditCreation;
 
 /**
  * A class used for the refactorings that need the rename project (in pysrcrefactoring)
- * 
+ *
  * @author Fabio
  */
 public abstract class RefactoringRenameTestBase extends RefactoringLocalTestBase {
@@ -91,6 +103,7 @@ public abstract class RefactoringRenameTestBase extends RefactoringLocalTestBase
      * In the setUp, it initializes the files in the refactoring project
      * @see com.python.pydev.refactoring.refactorer.refactorings.renamelocal.RefactoringLocalTestBase#setUp()
      */
+    @Override
     public void setUp() throws Exception {
         super.setUp();
         if (filesInRefactoringProject == null) {
@@ -117,8 +130,30 @@ public abstract class RefactoringRenameTestBase extends RefactoringLocalTestBase
                 additionalInfo.addAstInfo(mod.getAst(), modulesKey, false);
             }
 
-            RefactorerFindReferences.FORCED_RETURN = iFiles;
+            //            RefactorerFindReferences.FORCED_RETURN = iFiles;
         }
+        setUpConfigWorkspaceFiles();
+    }
+
+    private org.python.pydev.shared_core.resource_stubs.ProjectStub projectStub;
+
+    public void setUpConfigWorkspaceFiles() throws Exception {
+        projectStub = new org.python.pydev.shared_core.resource_stubs.ProjectStub(
+                new File(TestDependent.TEST_COM_REFACTORING_PYSRC_LOC),
+                natureRefactoring);
+        TextEditCreation.createWorkspaceFile = new ICallback<IFile, File>() {
+
+            @Override
+            public IFile call(File file) {
+                return new FileStub(projectStub, file) {
+                    @Override
+                    public IPath getFullPath() {
+                        return Path.fromOSString(this.file.getAbsolutePath());
+                    }
+
+                };
+            }
+        };
     }
 
     @Override
@@ -131,12 +166,16 @@ public abstract class RefactoringRenameTestBase extends RefactoringLocalTestBase
      */
     protected void checkProcessors() {
         if (lastProcessorUsed != null) {
-            List<IRefactorRenameProcess> processes = lastProcessorUsed.process;
+            List<IRefactorRenameProcess> processes = lastProcessorUsed.getAllProcesses();
             assertEquals(1, processes.size());
 
-            for (IRefactorRenameProcess p : processes) {
-                assertTrue(org.python.pydev.shared_core.string.StringUtils.format("Expected %s. Received:%s", getProcessUnderTest(), p.getClass()),
-                        getProcessUnderTest().isInstance(p)); //we should only activate the rename class process in this test case
+            Class processUnderTest = getProcessUnderTest();
+            if (processUnderTest != null) {
+                for (IRefactorRenameProcess p : processes) {
+                    assertTrue(StringUtils.format("Expected %s. Received:%s",
+                            processUnderTest, p.getClass()),
+                            processUnderTest.isInstance(p)); //we should only activate the rename class process in this test case
+                }
             }
         }
     }
@@ -147,8 +186,8 @@ public abstract class RefactoringRenameTestBase extends RefactoringLocalTestBase
     protected abstract Class getProcessUnderTest();
 
     /**
-     * A method that creates a project that references no other project 
-     * 
+     * A method that creates a project that references no other project
+     *
      * @param force whether the creation of the new nature should be forced
      * @param path the pythonpath for the new nature
      * @param name the name for the project
@@ -168,7 +207,7 @@ public abstract class RefactoringRenameTestBase extends RefactoringLocalTestBase
 
     /**
      * Overriden so that the pythonpath is only restored for the system and the refactoring nature
-     * 
+     *
      * @param force whether this should be forced, even if it was previously created for this class
      */
     @Override
@@ -192,6 +231,7 @@ public abstract class RefactoringRenameTestBase extends RefactoringLocalTestBase
      * checks if the size of the system modules manager and the project moule manager are coherent
      * (we must have more modules in the system than in the project)
      */
+    @Override
     protected void checkSize() {
         try {
             IInterpreterManager iMan = getInterpreterManager();
@@ -213,10 +253,12 @@ public abstract class RefactoringRenameTestBase extends RefactoringLocalTestBase
      * @param line: starts at 0
      * @param col: starts at 0
      */
-    protected Map<String, HashSet<ASTEntry>> getReferencesForRenameSimple(String moduleName, int line, int col) {
-        Map<String, HashSet<ASTEntry>> referencesForRename = getReferencesForRenameSimple(moduleName, line, col, false);
+    protected Map<Tuple<String, File>, HashSet<ASTEntry>> getReferencesForRenameSimple(String moduleName, int line,
+            int col) {
+        Map<Tuple<String, File>, HashSet<ASTEntry>> referencesForRename = getReferencesForRenameSimple(moduleName,
+                line, col, false);
         if (DEBUG_REFERENCES) {
-            for (Map.Entry<String, HashSet<ASTEntry>> entry : referencesForRename.entrySet()) {
+            for (Map.Entry<Tuple<String, File>, HashSet<ASTEntry>> entry : referencesForRename.entrySet()) {
                 System.out.println(entry.getKey());
                 for (ASTEntry e : entry.getValue()) {
                     System.out.println(e);
@@ -230,7 +272,8 @@ public abstract class RefactoringRenameTestBase extends RefactoringLocalTestBase
      * Same as {@link #getReferencesForRename(String, int, int, boolean)} but returning
      * the key for the map as a string with the module name.
      */
-    protected Map<String, HashSet<ASTEntry>> getReferencesForRenameSimple(String moduleName, int line, int col,
+    protected Map<Tuple<String, File>, HashSet<ASTEntry>> getReferencesForRenameSimple(String moduleName, int line,
+            int col,
             boolean expectError) {
         Map<String, HashSet<ASTEntry>> occurrencesToReturn = new HashMap<String, HashSet<ASTEntry>>();
 
@@ -242,13 +285,13 @@ public abstract class RefactoringRenameTestBase extends RefactoringLocalTestBase
             }
             occurrencesToReturn.put(entry.getKey().o1, entry.getValue());
         }
-        return occurrencesToReturn;
+        return referencesForRename;
     }
 
     /**
      * Goes through all the workspace (in this case the refactoring project) and gathers the references
      * for the current selection.
-     * 
+     *
      * @param moduleName the name of the module we're currently in
      * @param line the line we're in
      * @param col the col we're in
@@ -272,8 +315,9 @@ public abstract class RefactoringRenameTestBase extends RefactoringLocalTestBase
             PySelection ps = new PySelection(doc, line, col);
 
             RefactoringRequest request = new RefactoringRequest(null, ps, natureRefactoring);
-            request.setAdditionalInfo(AstEntryRefactorerRequestConstants.FIND_REFERENCES_ONLY_IN_LOCAL_SCOPE, false);
+            request.setAdditionalInfo(RefactoringRequest.FIND_REFERENCES_ONLY_IN_LOCAL_SCOPE, false);
             request.moduleName = moduleName;
+            request.inputName = "new_name";
             request.fillInitialNameAndOffset();
 
             PyRenameEntryPoint processor = new PyRenameEntryPoint(request);
@@ -282,9 +326,9 @@ public abstract class RefactoringRenameTestBase extends RefactoringLocalTestBase
             lastProcessorUsed = processor;
             checkProcessors();
 
-            checkStatus(processor.checkFinalConditions(nullProgressMonitor, null, false), expectError);
+            checkStatus(processor.checkFinalConditions(nullProgressMonitor, null), expectError);
             occurrencesToReturn = processor.getOccurrencesInOtherFiles();
-            occurrencesToReturn.put(new Tuple<String, File>(CURRENT_MODULE_IN_REFERENCES, null),
+            occurrencesToReturn.put(new Tuple<String, File>(moduleName, module.getFile()),
                     processor.getOccurrences());
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -309,8 +353,91 @@ public abstract class RefactoringRenameTestBase extends RefactoringLocalTestBase
                 return;
             }
         }
-        fail(org.python.pydev.shared_core.string.StringUtils.format("Unable to find line:%s col:%s in %s", line, col, names));
+        fail(StringUtils.format("Unable to find line:%s col:%s in %s", line, col,
+                names));
 
+    }
+
+    @SuppressWarnings("unchecked")
+    protected String asStr(Map<Tuple<String, File>, HashSet<ASTEntry>> referencesForModuleRename) throws Exception {
+        Set<Entry<Tuple<String, File>, HashSet<ASTEntry>>> entrySet = referencesForModuleRename.entrySet();
+        FastStringBuffer buf = new FastStringBuffer();
+        ArrayList<Entry<Tuple<String, File>, HashSet<ASTEntry>>> lst = new ArrayList<>(entrySet);
+        Comparator<Entry<Tuple<String, File>, HashSet<ASTEntry>>> c = new Comparator<Entry<Tuple<String, File>, HashSet<ASTEntry>>>() {
+
+            @Override
+            public int compare(Entry<Tuple<String, File>, HashSet<ASTEntry>> o1,
+                    Entry<Tuple<String, File>, HashSet<ASTEntry>> o2) {
+                return o1.getKey().o1.compareTo(o2.getKey().o1);
+            }
+        };
+        Collections.sort(lst, c);
+        for (Entry<Tuple<String, File>, HashSet<ASTEntry>> entry : lst) {
+            HashSet<ASTEntry> value = entry.getValue();
+            if (value.size() > 0) {
+                ArrayList<ASTEntry> lst2 = new ArrayList<>(value);
+                Comparator<ASTEntry> c2 = new Comparator<ASTEntry>() {
+
+                    @Override
+                    public int compare(ASTEntry o1, ASTEntry o2) {
+                        return o1.toString().compareTo(o2.toString());
+                    }
+                };
+
+                Collections.sort(lst2, c2);
+                File f = entry.getKey().o2;
+                String fileContents = FileUtils.getFileContents(f);
+
+                Document initialDoc = new Document(fileContents);
+
+                buf.append(entry.getKey().o1).append("\n");
+                for (ASTEntry e : lst2) {
+                    buf.append("  ");
+                    buf.append(e.toString()).append("\n");
+
+                    List<TextEdit> edits = (List<TextEdit>) e.getAdditionalInfo(
+                            AstEntryScopeAnalysisConstants.AST_ENTRY_REPLACE_EDIT, null);
+                    if (edits == null) {
+                        if (!(e instanceof ASTEntryWithSourceModule)) {
+                            throw new AssertionError("Only ASTEntryWithSourceModule can have null edits. Found: " + e);
+                        }
+                    } else {
+                        Document changedDoc = new Document(fileContents);
+                        for (TextEdit textEdit : edits) {
+                            textEdit.apply(changedDoc);
+                        }
+                        List<String> changedLines = getChangedLines(initialDoc, changedDoc);
+                        for (String i : changedLines) {
+                            buf.append("    ");
+                            buf.append(StringUtils.rightTrim(i)).append("\n");
+                        }
+                    }
+                }
+                buf.append("\n");
+            }
+        }
+        return buf.toString();
+    }
+
+    private List<String> getChangedLines(Document initialDoc, Document changedDoc) {
+        int numberOfLines = initialDoc.getNumberOfLines();
+        int numberOfLines2 = changedDoc.getNumberOfLines();
+        List<String> ret = new ArrayList<>();
+
+        if (numberOfLines != numberOfLines2) {
+            ret.add("Initial:\n" + StringUtils.replaceNewLines(initialDoc.get(), "\n"));
+            ret.add("Final:\n" + StringUtils.replaceNewLines(changedDoc.get(), "\n"));
+
+        } else {
+            for (int i = 0; i < numberOfLines; i++) {
+                String l1 = PySelection.getLine(initialDoc, i);
+                String l2 = PySelection.getLine(changedDoc, i);
+                if (!l1.equals(l2)) {
+                    ret.add(StringUtils.format("Line: %s  %s --> %s", i, l1, l2));
+                }
+            }
+        }
+        return ret;
     }
 
 }

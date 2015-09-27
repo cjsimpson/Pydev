@@ -1,6 +1,774 @@
 History For PyDev
 ~~~~~~~~~~~~~~~~~
 
+Release 4.3.0
+==========================
+
+* Fixed parser for Python 3.x to support async and await as regular names too (PyDev-593).
+
+* The new search dialog now has a 'whole word' option which automatically adds `*` to the search
+
+* Search backend updated to Lucene 5.2.1.
+
+* When bringing up the search dialog the search text is initially selected.
+
+
+Release 4.2.0
+==========================
+
+* New search page for Python contents
+
+	* Text-searches using a Lucene index allows for fast matches.
+	* Matches can be flattened and grouped by project, folders and modules.
+	* Results page allows additional filtering based on module name.
+
+	|
+
+	.. image:: images/search/search_results.png
+	   :class: no_border
+
+
+* Further improvements on code completion unpacking compound types.
+
+* Not adding auto 'import' token in cython files (to accept cimport).
+
+* PyDev Mylyn integration no longer depends on a specific PyDev release.
+
+* Fixed halting condition when unable to create native file watches.
+
+* Vertical indent guide no longer slows down the editor on Linux (PyDev-582).
+
+
+Release 4.1.0
+==========================
+
+* **Code Completion**
+
+	* Improved unpacking of compound types on more situations (PyDev-573).
+
+* **Debugger**
+
+	* PyDev remote debugging no longer blocks running program to completion (PyDev-574).
+	* When there are too many referrers to some object, results are trimmed.
+
+* **Python 3 grammar**
+
+	* Accepting **@** as matrix multiplication operator.
+	* **async** and **await** are properly parsed.
+	* Fixed issue parsing 'list remainder' construct (PyDev-568).
+
+* **Others**
+
+	* Fixed issue showing editor title name when more than one dot was present in the filename.
+	* Support automatic folding elements when opening a file -- must be enabled in PyDev > Editor > Code Folding (patch by Andreas Pakulat).
+	* Fixed issue on search page.
+	* Included css to set default editor colors for PyDev for in Eclipse dark theme.
+	* Tab-stops on comments added and enabled by default (patch by jheiv).
+	* Fixed StackOverflowError on code-completion (PyDev-570)
+
+
+Release 4.0.0
+==========================
+
+* **Code Completion**
+
+	* PyDev can now code-complete unpacking compound types (such as list(str), tuple(MyClass), dict(int:str), etc).
+	* Code-completion now has a maximum amount of time to complete (which may be changed in the code-completion preferences).
+
+* **Editor**
+
+	* Bytes and Unicode literals now have different colors (note: by default the Unicode kept the same color used for the old 'Strings' configuration).
+	* Mark occurrences is now also provided on some statements (such as return, continue, etc).
+
+* **Others**
+
+	* It's now possible to bind custom keybindings to help in passing custom commands to the interactive console (see: PyDev > Interactive Console > User Commands)
+	* The bundled autopep8.py and pep8.py were upgraded.
+	* Search for references (Ctrl+Shift+G) is faster (all processors available are used for the initial search).
+	* Search page now has a 'whole word' option.
+	* Improvements in the PyVmMonitor integration in MacOS and Linux to find the PyVmMonitor executable.
+	* Fixed PyDev-Mylyn integration in the PyDev Package Explorer to work with the latest Mylyn.
+	* Fixed issue doing code-completion for elements of a list (lst[0].) in the console. (PyDev-531)
+	* py.test xfailed tests are no longer marked as 'Failed' in PyUnit view (PyDev-506)
+
+
+
+Release 3.9.2
+==========================
+
+
+* **Debugger**
+
+	* The debug view now has an interactive console (with history) attached to it by default (which may be toggled on/off). (PyDev-507)
+	* Debugger no longer reopens a file when that file is already opened. (PyDev-456)
+	* Handled issue when getting referrers for some object gave an error if it was found in a dict where the key is not a string.
+	* When interactive console starts in debug session, a banner is no longer shown.
+	* Stepping with #@DontTrace no longer returns through decorator call-site. (PyDev-526)
+	* The default for tracing template render exceptions on Django is now false.
+
+* **Interactive Console**
+
+	* F2 to send contents from editor to console now considers backslash continuations. (PyDev-502)
+	* Interactive Console interrupt now properly interrupts a sleep call (when possible). (PyDev-500)
+	* PyDev interactive console now has a user-specified encoding (by default UTF-8). (PyDev-454)
+	* Scroll the console on stdout / stderr output. (PyDev-504, patch by James Blackburn)
+	* Moved interactive console initial commands to a separate preferences page.
+	* Handling interrupted system call EINTR in the pydevconsole.py. (PyDev-534)
+	* Fixed racing condition where the output of the console could appear as a user input. (PyDev-490, patch by James Blackburn)
+
+* **Refactoring**
+
+	* Fixed issue where indentation lost on rename module refactoring. (PyDev-498)
+	* The rename modules refactoring wizard now provides a way to do a simple resource rename (to rename extensions).
+
+* **Others**
+
+	* Converting filename from .pyx to .py doesn't loose indexing on the file anymore. (PyDev-525)
+	* The Cython parser now properly scopes methods.
+	* Pasting contents directly in the PyDev package explorer to create a file uses the proper delimiter.
+	* Fixed deadlock in ImageCache when rendering debug completions from console. (PyDev-527)
+	* Fixed deadlock on racing condition when rendering PyTextHover. (PyDev-523)
+	* Tab settings were separated from the editor color settings and may now be persisted in the project/user settings.
+	* Fixed surround with try..finally/except indentation on Ctrl+1 when some line has a comment which has a different indentation.
+
+
+
+Release 3.9.1
+==========================
+
+* **Preferences**
+
+  * PyDev preferences may now be saved and persisted for each project or in the user settings (not just in the workspace).
+  * Currently Save actions, Code Formatter, Typing and Imports are supported (more to come in upcoming releases).
+  * The same pages in the preferences are used to save settings to (multiple) projects or user settings.
+  * Configuration files are saved in Yaml format and are meant to be saved in version control.
+
+* **Editor**
+
+  * The option to apply auto-formating was changed to apply any save actions in non-workspace files.
+  * Editor icon improved for dark theme (patch by Fathony Luthfillah).
+  * When running the pep8 code analysis, the markers shown are no longer 1 character off.
+
+* **Django**
+
+  * Improved Django 1.7 support (patch by David Lehrian).
+
+* **Profiling**
+
+  * Integration with PyVmMonitor: http://pyvmmonitor.com/
+
+    * A profiling view was created where the location of PyVmMonitor should be specified.
+    * Just turning the option on will make all runs from that point on run with the selected profile backend enabled.
+
+* **Debugger**
+
+  * Connecting to subprocesses working in Python 3.4.
+  * Attach to running process is now supported on Mac OS.
+
+* **Others**
+
+  * Unset VIRTUAL_ENV before running external Python to protect the sys.path (patch by James Blackburn).
+  * pytest: Expected failure is no longer marked as a failure.
+  * pytest: The working dir is changed so that conftests are loaded properly (to workaround issue in pytest: https://bitbucket.org/hpk42/pytest/issue/639/conftest-being-loaded-twice-giving).
+  * Fixed issue where an unused import would not be properly removed if it was not a from import.
+  * Fixed exception when drawing minimap overview ruler.
+
+
+
+Release 3.9.0
+==========================
+
+* **Vertical Indent Guide** is now available (may be customized in PyDev > Editor > Vertical Indent Guide. PyDev-359).
+
+* **Minimap**
+
+    * The horizontal scrollbar is shown by default (again). It's still possible to hide it in the Preferences > PyDev > Editor > Overview Ruler Minimap.
+
+    * Fixed critical issue where the minimap could lead to a repaint recursion on some Linux versions (reproduced on Ubuntu 12. LiClipse-120).
+
+* The PYTHONPATH is now properly passed to PyLint when using an external executable (PyDev-475).
+
+* Fixed issue where breakpoints in other editors (i.e.: CDT) where wrongly being handled by PyDev (patch by Danny Yoo. PyDev-482).
+
+* Fixed issue doing code-completion for builtins in Jython (PyDev-457).
+
+* **Interactive Console**
+
+    * When doing a code-completion with Ctrl+Space, let tab change the focus instead of doing the tab-enabled completion.
+
+    * Output given from the backend could end up being editable (PyDev-465).
+
+    * input() was including the prompt in the input string (PyDev-465).
+
+    * Debugger console was outputting greeting message when it shouldn't (PyDev-464).
+
+* **pep8**: --exclude can now be used in pep8 parameters (patch by Sebastian Elsner. PyDev-466).
+
+* **autopep8**: end line delimiter is now being kept (patch by Ben Blank. PyDev-461).
+
+* Unittest integration: Making sure we don't import the unittest module before executing pytest (PyDev-455).
+
+* Unittest integration: Fix to use the proper encoding when passing stdout/stderr to the java side.
+
+* Fixed issue when debugging file without extension (when there was no default editor associated to the file name).
+
+* Debugger: getpass properly working with additional arguments (PyDev-460).
+
+
+
+Release 3.8.0
+==========================
+
+* **Debugger**
+
+    * It's now possible to **attach debugger to running process in Windows and Linux** (open debug perspective > PyDev > Attach to Process)
+
+* pep8 upgraded to 1.5.7
+* Fixed issue in dialog shown when PyDev editor is opened which could lead to closing the IDE.
+* Selecting PyQT API version using sip.setapi no longer fails in debug mode (PyDev-452).
+* Code completion tries to get docstring definition from class before evaluating property (PyDev-412).
+* Internal error error when parsing file with wrong syntax: java.lang.ClassCastException for invalid dict (PyDev-411).
+* runfile was restored in pydevconsole (Ctrl+Alt+Enter is working again).
+* **Variables** and **Expressions** views working again when debugging interactive console (PyDev-446).
+* Pressing Shift to debug with Ctrl+F9 test runner now properly works in Linux (PyDev-444).
+* Fixed interpreter configuration when the interpreter prints something before actually running interpreterInfo.py (PyDev-448).
+* Fixed NullPointerException when debugging file without extension.
+
+
+Release 3.7.1
+==========================
+
+    * Fix in minimap which could deadlock in Linux (patch by Sergey Klyaus).
+
+Release 3.7.0
+==========================
+
+* **Important**: PyDev requires Eclipse 3.8 or 4.3 onwards and Java 7! For older versions, keep using PyDev 2.x (use `LiClipse <http://www.liclipse.com/>`_ for a PyDev standalone with all requirements bundled).
+
+* **Minimap**
+
+    * Minimap is enabled by default.
+    * The minimap now shows content based on the outline.
+    * It's possible to customize the minimap selection color.
+    * Fixed issue where the background in the minimap could have a part with a different color until the image was fully redrawn.
+    * Scrollbars hidden by default.
+
+* **Editor**
+
+    * Auto code-completion on all letter chars is enabled by default.
+
+* **Debugger**
+
+    * Merged debugger code with the PyCharm fork.
+    * Fix the wrong signature of stackless.get_schedule_callback.
+    * Breakpoints work in Django templates (requires the `LiClipse <http://www.liclipse.com/>`_ html/django editor to work).
+    * Gevent debugging (must be enabled in the debugger preferences page).
+    * Faster debugging when dealing with huge dicts/sets/lists/tuples.
+    * QThreads can be debugged (for remote debugging, 'import pydevd' must be done before any user code is executed for it to work).
+
+* **Interactive Console**
+
+    * Output is gotten asynchronously.
+    * It's possible to interrupt the console.
+
+* **Others**
+
+    * Autopep8 now works with non ascii sources.
+    * More than 20 levels of indentation no longer causes ArrayOutOfBoundsException.
+    * Fixed some NullPointerExceptions.
+    * A bunch of other bugfixes.
+
+
+Release 3.6.0
+==========================
+.. _`Find Referrers`: manual_adv_debugger_find_referrers.html
+
+
+* **Important**: PyDev requires Eclipse 3.8 or 4.3 onwards and Java 7! For older versions, keep using PyDev 2.x (use `LiClipse <http://www.liclipse.com/>`_ for a PyDev standalone with all requirements bundled).
+
+* Thank you for helping in the current crowdfunding: http://tiny.cc/pydev-2014.
+
+* **pep8**:
+
+    * **pep8.py** was upgraded to the latest version.
+
+* **Code formatting**:
+
+    * **autopep8.py** can now be used to code-format Python files (must be enabled in the code formatter preferences -- use '-a -a' for really aggressive mode).
+
+    * Moved auto-save from the code formatter page to the save actions page (and created links to each other).
+
+    * Fixed issue where a space was placed before a unary operator on an empty line.
+
+* The internal Jython was upgraded to 2.7.beta2 (some manual shrinking was applied to make it smaller).
+
+* On a run as unit-test (**Ctrl+F9**), if Shift is pressed when doing the launch, the unit-test will be launched in debug mode.
+
+* **Shift+F9** can now be used to launch the current editor in debug mode (so, no more running a module with F9 to run it again later on in debug mode with F11).
+
+* Issue where the modules manager would miss the bultin modules was fixed (i.e.: Ctrl+1 to fix 'sys' undefined variable will show the 'import sys' fix).
+
+* Fixed corner case where filtering global tokens could miss some entries.
+
+* Fixed issue where relative import with more levels would not be found (on dotted imports).
+
+* It's now possible to debug UTF-8 files with BOM on Python 3.
+
+* Code completion proposals order was tweaked so that locals/globals appear first.
+
+* Trailing commas are no longer left when auto-removing unused imports (if that option is enabled in the preferences).
+
+* The manual now has instructions on how to use the `Find Referrers`_ while debugging.
+
+* The PyDev editor supports the new dark theme in Eclipse 4.4 (so, when it's chosen the editor colors are properly updated).
+
+* Code analysis: when a package imports itself it's no longer warned as an import not found.
+
+
+
+
+Release 3.5.0
+==========================
+
+* **Important**: PyDev requires Eclipse 3.8 or 4.3 onwards and Java 7! For older versions, keep using PyDev 2.x (use `LiClipse <http://www.liclipse.com/>`_ for a PyDev standalone with all requirements bundled).
+
+* Adding plead for the current crowdfunding at http://tiny.cc/pydev-2014.
+
+* PyDev now has a new logo.
+
+* **py.test**:
+
+    * Improved py.test test runner preferences page.
+
+    * py.test integration improved to be less intrusive and work with xdist.
+
+    * py.test protocol invocation now allows for module/session scoped fixtures to work properly.
+
+* Add bookmark and add task actions are shown in the ruler context menu (**Ctrl+F10**).
+
+* Code completion was not properly recognizing variables assigned to self inside an elif statement.
+
+* Django 1.7: Model.objects is manually patched inside PyDev to give proper code-completion results.
+
+* Debugger: hovering over private ('__' prefixed) variables now shows proper value.
+
+* Thread.isAlive() is no longer called to workaround debugger issue on Python 3.4.
+
+* Hyperlinking should not happen on spacing characters (I.e.: Ctrl+click on spaces).
+
+* Fixed NPE when interpreter is created with JDT and loaded afterwards without it.
+
+* Fixed issue where tokens cached information could end up being null after I/O.
+
+* Manually creating new run configuration no longer gives an exception (i.e.: configuration without associated project).
+
+* Out-of-sync error on PYTHONPATH change (patch by Danny Yoo)
+
+* There's an extension point for clients to resolve modules (patch by Danny Yoo).
+
+* **Ctrl+Shift+G** (find references) is now properly categorized.
+
+* Rename refactoring now validates files (read only) prior to refactoring (patch by Danny Yoo).
+
+* Not checking preferred settings when the PyDev plugin is started, but rather when a PyDev editor is opened.
+
+* Setting remote debugger socket to be properly reused.
+
+* The PyDev stdout/stderr redirector now properly uses PYTHONIOENCODING.
+
+
+Release 3.4.1
+==========================
+
+* **Important**: PyDev requires Eclipse 3.8 or 4.3 onwards and Java 7! For older versions, keep using PyDev 2.x (use `LiClipse <http://www.liclipse.com/>`_ for a PyDev standalone with all requirements bundled).
+
+
+* **Interactive Console**:
+
+    * **Send a single line to the interactive console with F2** (akin to Ctrl+Alt+Enter but only for the current line).
+
+
+* **Debugger**:
+
+    * **Added support for debugging spawned subprocesses.**
+
+        * New Django launches no longer have -noreload to take advantage of that (but existing launches have to be manually edited -- or removed and recreated).
+
+    * When terminating a process its subprocesses are also killed (avoiding django zombie processes).
+
+    * In the debugger, locals are now also properly saved on PyPy (requires a newer version of PyPy too).
+
+    * Remote Debugger: when specifying items in PATHS_FROM_ECLIPSE_TO_PYTHON pathnames are normalized.
+
+    * Fixes to work with Jython 2.1 and Jython 2.2.1
+
+    * Always setting PYTHONUNBUFFERED environment variable to 1.
+
+    * The python default encoding is no longer changed (only PYTHONIOENCODING is used now and not sys.setdefaultencoding).
+
+    * Minor improvements on get referrers.
+
+
+* **General**:
+
+    * **Cython: .pxd and .pxi files are properly supported.**
+
+    * Interpreter configuration: It's possible to reorder PYTHONPATH entries with drag and drop.
+
+    * Fixed django interactive shell to work with newer versions of Django.
+
+    * Rename working properly for files without extensions.
+
+    * Fixed issue where specifying the type of a variable with a comment was not detected in the code-completion.
+
+    * Fixed issue where we'd open a file as if it was an external file when it was actually a file in the workspace or inside a source folder.
+
+    * PyDev Package Explorer: fixed issue where some errors would remain showing when they didn't exist anymore.
+
+    * PyDev Package Explorer: fixed issue where items could change its order depending on decorations.
+
+    * On a double-click on spaces, all the spaces are selected.
+
+
+* **Test Runner**:
+
+    * **Improved py.test integration**: it's now possible to select which tests to run with Ctrl+F9 (even if not under a class).
+
+    * No longer breaks if a file which was in a launch config is removed (still runs other tests in the launch).
+
+    * After a test run finishes, if there are non-daemon threads running they're printed to the output.
+
+    * Fixed UnicodeDecodeError when running unit-tests under python 2.x
+
+    * Fixed issue on test discovery on Linux.
+
+
+* **Sorting Imports**:
+
+    * Sort of imports no longer adds spaces at end of imports.
+
+    * Sort of imports no longer passes the number of available columns specified.
+
+    * It's now also possible to keep the names of 'from' imports sorted.
+
+
+Release 3.3.3
+==========================
+
+* **Important**: PyDev requires Eclipse 3.8 or 4.3 onwards and Java 7! For older versions, keep using PyDev 2.x (use `LiClipse <http://www.liclipse.com/>`_ for a PyDev standalone with all requirements bundled).
+
+
+* **Code Completion**:
+
+    - Compiled modules are now indexed and shown in the context-insensitive code-completion.
+
+    - In an empty file, a code-completion request will show options related to creating modules (press Ctrl+Space twice to show only those templates).
+
+
+* **Performance**:
+
+    - Building (indexing) of Python files is **much** faster.
+
+    - Code completion does not get slown down by other analysis done in the background due to shell synchronization.
+
+
+* **Interactive Console**:
+
+    - The interactive console now has tab-completion (so, tab can be used to show completions such as in IPython).
+
+
+* **Debugger**:
+
+    - **Locals are now properly changed in the debugger** -- along with set next statement and auto-reloading this can make a debug session much more enjoyable!
+
+    - Added a way to skip functions on a step-in on functions with **#\@DontTrace** comments:
+
+        - **Makes it possible to skip a lot of boilerplate code on a debug session!**
+        - Can be enabled/disabled in the debugger preferences;
+        - Ctrl+1 in a line with a method shows option to add **#\@DontTrace** comment (if enabled in the preferences).
+
+    - Debugging Stackless is much improved, especially for versions of Stackless released from 2014 onwards (special thanks to Anselm Kruis who improved stackless itself for this integration to work properly).
+
+    - Reload during a debug session is improved and more stable:
+
+        - Only updates what it can in-place or adds new attributes;
+
+        - Shows what's being patched in the console output;
+
+        - New hooks are provided for clients which may want to extend the reload;
+
+        - See: `Auto Reload in Debugger <manual_adv_debugger_auto_reload.html>`_ for more details.
+
+
+
+* **General**:
+
+    - Compiled modules are now indexed, so, **fix import with Ctrl+1 now works with itertools, PyQt and other 'forced builtins'**.
+
+    - When diffing a Python file, the PyDev comparison (with proper syntax highlighting) is now the default.
+
+    - When finding a definition in a .pyd file, if there's a related .pyx in the same location, it's opened.
+
+    - Running unit-tests will not try to import files that are in folders that don't have an __init__.py file.
+
+    - Alt+Shift+O can be used to toggle mark occurrences.
+
+    - Ctrl+3 not bound by default anymore on PyDev so that it does not conflict with the Eclipse Ctrl+3 (Ctrl+/ can be used instead).
+
+    - Fixed recursion issue when finding file in pydev package explorer.
+
+    - When configuring the interpreter, links are not followed when resolving entries for the PYTHONPATH.
+
+    - It's possible to launch a directory containing a __main__.py file executable.
+
+    - Fixed issues when creating django project without any existing project in the workspace.
+
+    - Fixed deadlock on code-completion.
+
+    - __pycache__ folders are hidden by default.
+
+
+* **Organize imports**:
+
+    - When saving a file, if automatically organizing imports, don't remove unused imports even if that option is checked.
+
+    - When saving a file, if automatically organizing imports, and nothing changes, don't change the buffer (so, no undo command is created).
+
+    - @NoMove can be used in an import so that the import organizer doesn't mess with it.
+
+
+
+* **Refactoring**:
+
+    - Fixed error when moving resource in PYTHONPATH to a dir out of the PYTHONPATH.
+
+    - On a search make sure we search only python files, not dlls (which could give OutOfMemory errors and make the search considerably slower).
+
+    - Multiple fixes on the rename module refactoring.
+
+
+
+Release 3.2.0
+==========================
+
+* **Important**: PyDev requires Eclipse 3.8 or 4.3 onwards and Java 7! For older versions, keep using PyDev 2.x.
+
+
+* **General**:
+
+    * Added option to sort imports on save.
+
+    * Showing dialog suggesting user to customize settings in Eclipse which are more suitable for PyDev.
+
+    * Memory improvements on situations where an OutOfMemoryError could happen.
+
+    * Search references (Ctrl+Shift+G) when initial is on external works (for matches in workspace).
+
+* **Rename refactoring**:
+
+    * Added option to rename module without updating references.
+
+    * Bugfixes.
+
+* **Performance**:
+
+    * Code completion: Builtins gotten from a shell are now cached for subsequent requests.
+
+    * Doing a full build (reindex) is faster.
+
+* **Debugger**:
+
+    * Improvements on stackless integration.
+
+    * Providing a view which shows the current caught exception.
+
+    * Providing way to ignore current caught exception.
+
+    * Providing option to show progress on taskbar when breakpoint is hit to get the users attention (windows 7).
+
+    * Fixed issue in while getting referrers when getting __dict__ and having an exception.
+
+
+
+Release 3.1.0
+==========================
+
+* **Important**: PyDev requires Eclipse 3.8 or 4.3 onwards and Java 7! For older versions, keep using PyDev 2.x.
+
+* **Refactoring**:
+
+    * It's now possible to rename a module (using F2 or drag and drop in the pydev package explorer).
+
+    * Multiple improvements on the rename refactoring.
+
+* **Debugger**:
+
+    * **Automatic code reloading on the debugger** (based on xreload).
+
+        * When a file is changed and a debug session is on, PyDev will automatically reload it (based on xreload).
+
+        * View https://github.com/fabioz/Pydev/blob/development/plugins/org.python.pydev/pysrc/pydevd_reload.py for caveats/limitations.
+
+    * **Get referrers on debug**
+
+        * Right-click expression or variable in debugger and select 'Get Referrers'
+
+        * Note: may not work on some Python variants as it needs access to the gc module.
+
+    * **Stackless python** is now supported in the debugger, showing all the suspended tasklets in the stack view.
+
+    * Automatically force focus to Eclipse on breakpoint hit (Enable in prefereces > pydev > debug).
+
+    * The remote debugger can be left 'always on' (Enable in prefereces > pydev > debug).
+
+    * If there's an exception while evaluating a conditional breakpoint the thread is suspended and the issue reported.
+
+    * Option to skip caught exceptions thrown and handled in the same context.
+
+    * A comment with @IgnoreException can be added to lines where an exception is thrown to have that exception ignored by the debugger when caught exceptions support is turned on.
+
+    * Improved visualization of frame objects.
+
+    * Bug-fixes on Jython debugging.
+
+* **Unittest**:
+
+    * Django: The default PyDev unittest runner can now run Django tests properly
+
+    * Selecting a unit-test method in the editor and **right-click > run as unit-test** will run only the selected unit-test.
+
+    * **Ctrl+F9** with test selected will pre-select only that test to run in unit-test.
+
+
+* **General**:
+
+    * Improvements on search for references (Ctrl+Shift+G).
+
+    * Fixed some racing conditions related to the plugin startup.
+
+    * Organize imports has option to add from imports before other imports.
+
+    * Improved connection to shell that does code-completion.
+
+    * Properly supporting creation of shell inside a Jython VM in Eclipse.
+
+
+
+Release 3.0
+==========================
+
+* From now on, PyDev requires Eclipse 3.8 or 4.3 onwards and Java 7! For older versions, keep using PyDev 2.x.
+
+* Interpreter is now kept up to date with changes to the interpreter, so, pip-installing packages will automatically update internal caches without requiring a manual step.
+
+* Fixed issue connecting to shell for code-completion (which could halt the IDE).
+
+* Interactive Console (patches by Jonah Graham)
+
+    * IPython 1.0 is now supported.
+
+    * Computational Crystallography Toolbox (CCTBX: http://cctbx.sourceforge.net/) can now be used with PyDev.
+
+    * Debug support in interactive console (must be enabled in preferences).
+
+    * User Module Deleter (UMD): forcefully reloads user-loaded modules when using runfile on interactive console (must be enabled in preferences).
+
+    * GUI event loop integration: more backends are now supported and can be configured in the preferences.
+
+    * %gui provides customization for the gui event loop integration (i.e.: %gui wx enables wxPython integration).
+
+    * %edit on IPython will open the file in the PyDev editor.
+
+    * History of commands is now saved to a persistent file.
+
+    * Loading of history is faster.
+
+* Interpreter configuration (patches by Andrew Ferrazzutti)
+
+    * Interpreter configuration quick auto-config: automatically finds a Python installed and configures it.
+
+    * Interpreter configuration advanced auto-config: searches for multiple Python installations in the computer and allows selecting one to configure.
+
+    * Source folders (PYTHONPATH) are kept updated on renames and moves in the PyDev package explorer.
+
+* Grammar 3.x accepts u'str'.
+
+* Fixed project configuration ${PROJECT_DIR_NAME} variable to point to dir name inside Eclipse and not the folder name in filesystem (this could make PyDev miss folders in the project PYTHONPATH).
+
+* Debugger:
+
+    * Breakpoints working on files with unicode chars.
+
+    * patches by Jonah Graham:
+
+        * Variables can be pretty-printed with right-click > pretty print.
+
+        * Improved handling for numpy.ndarrays.
+
+* And as usual, many other bugfixes!
+
+
+
+Release 2.8.2
+==========================
+
+* The type inference engine now accepts comments in the format **#@type a: str** to get the type.
+
+* Interpreter configuration properly deals with characters with ampersand.
+
+* Interactive console can now work with PySide and wxPython to create widgets without blocking.
+
+* Debugger now working properly with Jython 2.1.
+
+* Markups in sphinx or epydoc format can now have a different color in docstrings.
+
+* Code-completion for the sphinx markup is provided in docstrings.
+
+* Fixed issue when resolving module names (which could make PyDev find modules as Lib.math instead of math if the interpreter folder was added to the PYTHONPATH and not only the Lib folder).
+
+* When configuring project source folders (PYTHONPATH), it's possible to make use of the PROJECT_DIR_NAME variable.
+
+* **Patches by Trey Greer**:
+
+    * PyLint 1.0 is now properly supported.
+
+* **Patches by Jonah Graham:**
+
+    * Fixed issue in interactive console interaction with XML-RPC.
+
+    * Interactive console history is saved to persistent location.
+
+    * It's possible to filter variables in the variables view menu (can be activated with Ctrl+F10 focusing the variables view > PyDev, select/deselect filters).
+
+    * Eclipse variables are expanded in the initial interpreter commands for the interactive console.
+
+    * An evaluate button (same as Ctrl+Alt+Enter) is now available in the toolbar.
+
+* **Patches by by Anselm Kruis:**
+
+    * Fixed issues related to having the interpreter or workspace in locations with non-ascii characters.
+
+* **Patches by Jeremy Carroll:**
+
+    * It's now possible to use PEP-8 style imports (default now, can be unconfigured at window > preferencs > pydev > editor > code style > imports).
+
+    * It's possible to configure the organize imports to remove unused imports (must be enabled in window > preferencs > pydev > editor > code style > imports).
+
+* **Patches by Andrew Ferrazzutti:**
+
+    * Better heuristics to discover file in workspace related to open files when debugging.
+
+    * Improvements in the PyDev project configuration and wizard.
+
+    * It's possible to mark/unmark folders as source folders with a right-click context menu.
+
+    * Auto-Configuration of interpreter streamlined.
+
+* **Patches by Andre Berg:**
+
+    * It's possible to have a change action which will keep a variable updated when file is changed (i.e.: __date__ = '2013-01-01' would be updated when file is saved to a new date).
+
+
 
 
 Release 2.8.1

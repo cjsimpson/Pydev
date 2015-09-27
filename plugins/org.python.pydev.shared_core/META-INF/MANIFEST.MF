@@ -2,8 +2,11 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: Shared Core Plug-in
 Bundle-SymbolicName: org.python.pydev.shared_core;singleton:=true
-Bundle-Version: 3.0.0.qualifier
-Bundle-ClassPath: shared_core.jar
+Bundle-Version: 4.3.1.qualifier
+Bundle-ClassPath: shared_core.jar,
+ libs/snakeyaml-1.11.jar,
+ libs/lucene-analyzers-common-5.2.1.jar,
+ libs/lucene-core-5.2.1.jar
 Bundle-Activator: org.python.pydev.shared_core.SharedCorePlugin
 Bundle-Localization: plugin
 Eclipse-BundleShape: dir
@@ -11,24 +14,43 @@ Require-Bundle: org.eclipse.core.runtime,
  org.eclipse.jface.text,
  org.junit;bundle-version="4.0";resolution:=optional,
  org.eclipse.jface,
- org.eclipse.core.resources
+ org.eclipse.core.resources,
+ org.eclipse.core.filebuffers,
+ org.eclipse.ui.workbench
 Bundle-ActivationPolicy: lazy
 Export-Package: org.python.pydev.shared_core,
  org.python.pydev.shared_core.actions,
  org.python.pydev.shared_core.auto_edit,
+ org.python.pydev.shared_core.bundle,
  org.python.pydev.shared_core.cache,
  org.python.pydev.shared_core.callbacks,
+ org.python.pydev.shared_core.document,
  org.python.pydev.shared_core.editor,
+ org.python.pydev.shared_core.index,
  org.python.pydev.shared_core.io,
+ org.python.pydev.shared_core.locator,
  org.python.pydev.shared_core.log,
  org.python.pydev.shared_core.model,
  org.python.pydev.shared_core.net,
+ org.python.pydev.shared_core.out_of_memory,
  org.python.pydev.shared_core.parsing,
  org.python.pydev.shared_core.partitioner,
+ org.python.pydev.shared_core.path_watch,
+ org.python.pydev.shared_core.preferences,
  org.python.pydev.shared_core.process,
+ org.python.pydev.shared_core.resource_stubs,
  org.python.pydev.shared_core.string,
  org.python.pydev.shared_core.structure,
  org.python.pydev.shared_core.testutils,
- org.python.pydev.shared_core.utils
+ org.python.pydev.shared_core.threaded_objects_pool,
+ org.python.pydev.shared_core.utils,
+ org.yaml.snakeyaml,
+ org.yaml.snakeyaml.error,
+ org.yaml.snakeyaml.events,
+ org.yaml.snakeyaml.nodes,
+ org.yaml.snakeyaml.parser,
+ org.yaml.snakeyaml.reader,
+ org.yaml.snakeyaml.scanner,
+ org.yaml.snakeyaml.tokens
 Bundle-Vendor: Appcelerator
 Bundle-RequiredExecutionEnvironment: JavaSE-1.7

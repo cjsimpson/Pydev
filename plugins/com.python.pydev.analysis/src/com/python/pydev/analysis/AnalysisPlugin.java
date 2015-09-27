@@ -7,7 +7,10 @@
 package com.python.pydev.analysis;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.IPath;
@@ -20,14 +23,20 @@ import org.python.pydev.core.ICompletionCache;
 import org.python.pydev.core.IDefinition;
 import org.python.pydev.core.IModule;
 import org.python.pydev.core.IPythonNature;
+import org.python.pydev.core.IToken;
 import org.python.pydev.editor.codecompletion.revisited.CompletionStateFactory;
+import org.python.pydev.editor.codecompletion.revisited.modules.SourceToken;
 import org.python.pydev.editor.codecompletion.revisited.visitors.Definition;
+import org.python.pydev.editor.codecompletion.revisited.visitors.HeuristicFindAttrs;
 import org.python.pydev.editor.model.ItemPointer;
 import org.python.pydev.editor.refactoring.PyRefactoringFindDefinition;
+import org.python.pydev.parser.jython.ast.FunctionDef;
+import org.python.pydev.parser.jython.ast.exprType;
 import org.python.pydev.shared_ui.ImageCache;
 import org.python.pydev.shared_ui.UIConstants;
 
 import com.python.pydev.analysis.additionalinfo.IInfo;
+import com.python.pydev.analysis.additionalinfo.ReferenceSearchesLucene;
 
 /**
  * The main plugin class to be used in the desktop.
@@ -49,6 +58,7 @@ public class AnalysisPlugin extends AbstractUIPlugin {
     /**
      * This method is called upon plug-in activation
      */
+    @Override
     public void start(BundleContext context) throws Exception {
         super.start(context);
 
@@ -57,21 +67,21 @@ public class AnalysisPlugin extends AbstractUIPlugin {
         //        Display.getDefault().asyncExec(new Runnable() {
         //            public void run() {
         //                IWorkbench workbench = PlatformUI.getWorkbench();
-        //                
+        //
         //                activeWorkbenchWindow = workbench.getActiveWorkbenchWindow();
         //                handleActivePage();
-        //                
+        //
         //                workbench.addWindowListener(new IWindowListener() {
-        //                    
+        //
         //                    public void windowOpened(IWorkbenchWindow window) {
         //                    }
-        //                    
+        //
         //                    public void windowDeactivated(IWorkbenchWindow window) {
         //                    }
-        //                    
+        //
         //                    public void windowClosed(IWorkbenchWindow window) {
         //                    }
-        //                    
+        //
         //                    public void windowActivated(IWorkbenchWindow window) {
         //                        //When a window is activated, remove from the previous and add to the new one.
         //                        if(activeWorkbenchWindow != null){
@@ -102,8 +112,10 @@ public class AnalysisPlugin extends AbstractUIPlugin {
     /**
      * This method is called when the plug-in is stopped
      */
+    @Override
     public void stop(BundleContext context) throws Exception {
         super.stop(context);
+        ReferenceSearchesLucene.disposeAll();
         plugin = null;
     }
 
@@ -146,12 +158,44 @@ public class AnalysisPlugin extends AbstractUIPlugin {
                     //so, we'de get a find definition for Bar.__init__.xxx which is something we won't find
                     //for now, let's simply return a match in the correct context (although the correct way of doing
                     //it would be analyzing that context to find the match)
-                    definitions = mod.findDefinition(
+                    IDefinition[] contextDefinitions = mod.findDefinition(
                             CompletionStateFactory.getEmptyCompletionState(path, nature, completionCache), -1, -1,
                             nature);
 
+                    if (contextDefinitions != null && contextDefinitions.length > 0) {
+                        for (IDefinition iDefinition : contextDefinitions) {
+                            if (iDefinition instanceof Definition) {
+                                Definition definition = (Definition) iDefinition;
+                                if (definition.ast instanceof FunctionDef) {
+                                    FunctionDef functionDef = (FunctionDef) definition.ast;
+                                    if (functionDef.args != null) {
+                                        exprType[] args = functionDef.args.args;
+                                        if (args != null && args.length > 0) {
+                                            //I.e.: only analyze functions with at least one argument (for self or cls).
+                                            Map<String, SourceToken> repToTokenWithArgs = new HashMap<String, SourceToken>();
+                                            HeuristicFindAttrs heuristicFindAttrs = new HeuristicFindAttrs(
+                                                    HeuristicFindAttrs.WHITIN_ANY, HeuristicFindAttrs.IN_ASSIGN, "",
+                                                    definition.module.getName(), null, repToTokenWithArgs);
+                                            heuristicFindAttrs.visitFunctionDef(functionDef);
+
+                                            List<IToken> tokens = heuristicFindAttrs.getTokens();
+                                            List<IDefinition> newDefs = new ArrayList<>();
+                                            for (IToken iToken : tokens) {
+                                                if (info.getName().equals(iToken.getRepresentation())) {
+                                                    newDefs.add(new Definition(iToken, definition.scope,
+                                                            definition.module));
+                                                }
+                                            }
+                                            definitions = newDefs.toArray(new IDefinition[newDefs.size()]);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                 }
-                PyRefactoringFindDefinition.getAsPointers(pointers, (Definition[]) definitions);
+                PyRefactoringFindDefinition.getAsPointers(pointers, definitions);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
